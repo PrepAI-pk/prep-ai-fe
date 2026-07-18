@@ -1,22 +1,10 @@
-import { Box, Paper, Typography } from "@mui/material";
+import { Alert, Box, Paper, Typography } from "@mui/material";
 import type { AppScreen } from "../../../../app/screens";
-import { PracticeTopbar } from "../../../practice";
-import {
-  activityBarColor,
-  DASHBOARD_RECOMMENDED,
-  DASHBOARD_STAT_CARDS,
-  DASHBOARD_SUBJECT_BARS,
-  DASHBOARD_WEEKLY_BARS,
-  subjectAccuracyColor,
-} from "../../dashboard.constants";
-import {
-  DASHBOARD_CONTINUE_LABEL,
-  DASHBOARD_CONTINUE_PROGRESS_TEXT,
-  DASHBOARD_CONTINUE_PROGRESS_VALUE,
-  DASHBOARD_CONTINUE_TOPIC,
-  DASHBOARD_HERO_GREETING,
-  DASHBOARD_HERO_MESSAGE,
-} from "../../dashboard-page.constants";
+import { toApiErrorMessage } from "../../../../api/error";
+import { useGetDashboardQuery } from "../../../../api/dashboard/dashboard.endpoints";
+import { PracticeSkeleton } from "../../../../components/loading/practice-skeleton";
+import { PracticeTopbar, usePracticeUi } from "../../../practice";
+import { activityBarColor, subjectAccuracyColor } from "../../dashboard.constants";
 import {
   continueProgressFillSx,
   dashboardStyles,
@@ -29,10 +17,72 @@ type DashboardPageProps = {
   onNavigateScreen?: (screen: AppScreen) => void;
 };
 
+// The backend only ever emits "practice:<subjectId>" today (see
+// dashboard.service.ts's `recommended` builder) — this stays a narrow parse
+// rather than a general router, matching what's actually produced.
+function parseTargetRef(targetRef: string): { screen: AppScreen; subjectId?: string } {
+  const [prefix, subjectId] = targetRef.split(":");
+  if (prefix === "practice") {
+    return { screen: "practice", subjectId };
+  }
+  return { screen: "dashboard" };
+}
+
 export function DashboardPage(props: DashboardPageProps = {}) {
   const { onNavigateScreen } = props;
+  const practiceUi = usePracticeUi();
+  const dashboardQuery = useGetDashboardQuery();
 
-  const maxWeekly = Math.max(...DASHBOARD_WEEKLY_BARS.map((bar) => bar.value));
+  if (dashboardQuery.isLoading) {
+    return (
+      <Box sx={dashboardStyles.shell}>
+        <Box sx={{ ...dashboardStyles.scrollBody, ...dashboardStyles.wrap }}>
+          <PracticeSkeleton />
+        </Box>
+      </Box>
+    );
+  }
+
+  if (dashboardQuery.isError || !dashboardQuery.data) {
+    return (
+      <Box sx={dashboardStyles.shell}>
+        <Box sx={dashboardStyles.scrollBody}>
+          <Alert severity="error" sx={{ borderRadius: 2 }}>
+            Could not load the dashboard.{" "}
+            {toApiErrorMessage(dashboardQuery.error, "Please try again.")}
+          </Alert>
+        </Box>
+      </Box>
+    );
+  }
+
+  const dashboard = dashboardQuery.data;
+  const maxWeekly = Math.max(1, ...dashboard.weeklyActivity.map((bar) => bar.v));
+
+  function handleRecommendedClick(targetRef: string): void {
+    const { screen, subjectId } = parseTargetRef(targetRef);
+    if (subjectId) {
+      const subject = dashboard.accuracyBySubject.find((s) => s.subjectId === subjectId);
+      if (subject) {
+        practiceUi.setSelectedSubject(subject.name);
+      }
+    }
+    onNavigateScreen?.(screen);
+  }
+
+  function handleContinueClick(): void {
+    if (dashboard.continue) {
+      practiceUi.setSelectedSubject(dashboard.continue.subjectName);
+    }
+    onNavigateScreen?.("practice");
+  }
+
+  const statCards = [
+    { label: "Questions solved", stat: dashboard.stats.questionsSolved },
+    { label: "Overall accuracy", stat: dashboard.stats.accuracy },
+    { label: "Mock rank", stat: dashboard.stats.mockRank },
+    { label: "Study time", stat: dashboard.stats.studyTime },
+  ];
 
   return (
     <Box sx={dashboardStyles.shell}>
@@ -51,41 +101,45 @@ export function DashboardPage(props: DashboardPageProps = {}) {
             <Box sx={dashboardStyles.heroRow}>
               <Box sx={dashboardStyles.heroCopy}>
                 <Typography variant="h2" sx={dashboardStyles.heroGreeting}>
-                  {DASHBOARD_HERO_GREETING}
+                  Good {dashboard.greeting.partOfDay}, {dashboard.greeting.name}.
                 </Typography>
                 <Typography sx={dashboardStyles.heroMessage}>
-                  {DASHBOARD_HERO_MESSAGE}
+                  Here's where to focus next.
                 </Typography>
               </Box>
 
               <Paper sx={dashboardStyles.heroCard}>
                 <Box sx={dashboardStyles.heroCardContent}>
                   <Typography sx={dashboardStyles.continueLabel}>
-                    {DASHBOARD_CONTINUE_LABEL}
+                    Continue
                   </Typography>
                   <Typography sx={dashboardStyles.continueTopic}>
-                    {DASHBOARD_CONTINUE_TOPIC}
+                    {dashboard.continue?.topicTitle ?? "Start your first practice set"}
                   </Typography>
                   <Box sx={dashboardStyles.continueProgressTrack}>
-                    <Box sx={continueProgressFillSx(DASHBOARD_CONTINUE_PROGRESS_VALUE)} />
+                    <Box sx={continueProgressFillSx(`${dashboard.continue?.progressPct ?? 0}%`)} />
                   </Box>
-                  <Typography sx={dashboardStyles.continueProgressText}>{DASHBOARD_CONTINUE_PROGRESS_TEXT}</Typography>
+                  <Typography sx={dashboardStyles.continueProgressText}>
+                    {dashboard.continue
+                      ? `${dashboard.continue.subjectName} - ${dashboard.continue.progressPct}% complete`
+                      : "No practice sessions yet"}
+                  </Typography>
                 </Box>
-                <Box onClick={() => onNavigateScreen?.("practice")} sx={dashboardStyles.continueBadge}>
+                <Box onClick={handleContinueClick} sx={dashboardStyles.continueBadge}>
                   ▸
                 </Box>
               </Paper>
             </Box>
 
             <Box sx={dashboardStyles.statsGrid}>
-              {DASHBOARD_STAT_CARDS.map((card) => (
+              {statCards.map((card) => (
                 <Paper key={card.label} variant="outlined" sx={dashboardStyles.statCard}>
                   <Typography sx={dashboardStyles.statCardLabel}>{card.label}</Typography>
                   <Typography variant="h3" sx={dashboardStyles.statCardValue}>
-                    {card.value}
+                    {card.stat.value}
                   </Typography>
-                  <Typography sx={statDeltaSx(card.tone)}>
-                    {card.delta}
+                  <Typography sx={statDeltaSx(card.stat.good ? "good" : "muted")}>
+                    {card.stat.delta}
                   </Typography>
                 </Paper>
               ))}
@@ -102,15 +156,15 @@ export function DashboardPage(props: DashboardPageProps = {}) {
                   </Typography>
                 </Box>
                 <Box sx={dashboardStyles.barsRow}>
-                  {DASHBOARD_WEEKLY_BARS.map((bar, index) => (
-                    <Box key={`${bar.day}-${index}`} sx={dashboardStyles.barColumn}>
+                  {dashboard.weeklyActivity.map((bar, index) => (
+                    <Box key={`${bar.d}-${index}`} sx={dashboardStyles.barColumn}>
                       <Box
                         sx={weeklyBarFillSx(
-                          Math.round((bar.value / maxWeekly) * 100),
-                          activityBarColor(index),
+                          Math.round((bar.v / maxWeekly) * 100),
+                          activityBarColor(bar.isToday),
                         )}
                       />
-                      <Typography sx={dashboardStyles.barDayLabel}>{bar.day}</Typography>
+                      <Typography sx={dashboardStyles.barDayLabel}>{bar.d}</Typography>
                     </Box>
                   ))}
                 </Box>
@@ -120,9 +174,14 @@ export function DashboardPage(props: DashboardPageProps = {}) {
                 <Typography sx={dashboardStyles.subjectTitle}>
                   Accuracy by subject
                 </Typography>
+                {dashboard.accuracyBySubject.length === 0 && (
+                  <Typography sx={{ fontSize: 13, color: "text.secondary" }}>
+                    Practice a few questions to see subject accuracy here.
+                  </Typography>
+                )}
                 <Box sx={dashboardStyles.subjectList}>
-                  {DASHBOARD_SUBJECT_BARS.map((subject) => (
-                    <Box key={subject.name}>
+                  {dashboard.accuracyBySubject.map((subject) => (
+                    <Box key={subject.subjectId}>
                       <Box sx={dashboardStyles.subjectRowHead}>
                         <Typography sx={dashboardStyles.subjectName}>{subject.name}</Typography>
                         <Typography sx={dashboardStyles.subjectAccuracy}>
@@ -144,12 +203,17 @@ export function DashboardPage(props: DashboardPageProps = {}) {
               </Typography>
               <Typography sx={dashboardStyles.recommendationsSubtitle}>Prioritized by your weak areas</Typography>
             </Box>
+            {dashboard.recommended.length === 0 && (
+              <Alert severity="info" sx={{ borderRadius: 2 }}>
+                Recommendations will appear once you've practiced a few subjects.
+              </Alert>
+            )}
             <Box sx={dashboardStyles.recommendationsGrid}>
-              {DASHBOARD_RECOMMENDED.map((item) => (
+              {dashboard.recommended.map((item) => (
                 <Paper
                   key={item.topic}
                   variant="outlined"
-                  onClick={() => onNavigateScreen?.(item.target)}
+                  onClick={() => handleRecommendedClick(item.targetRef)}
                   sx={dashboardStyles.recommendationCard}
                 >
                   <Typography sx={dashboardStyles.recommendationTag}>

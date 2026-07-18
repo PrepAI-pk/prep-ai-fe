@@ -1,4 +1,4 @@
-import type { NotificationPrefs } from "../../app/settings-persistence";
+import type { NotifCategoryKey } from "../../api/me/me.types";
 
 export const SettingsTab = {
   Profile: "profile",
@@ -24,18 +24,18 @@ export const SETTINGS_TABS: SettingsTabItem[] = [
 ];
 
 export type NotificationRow = {
-  key: keyof NotificationPrefs["notif"];
+  key: NotifCategoryKey;
   label: string;
   desc: string;
 };
 
+// The real 5 categories (DATABASE.md) — see notification-settings.constants.ts.
 export const SETTINGS_NOTIFICATION_ROWS: NotificationRow[] = [
-  { key: "mockResults", label: "Mock results", desc: "Get updates when an exam result is generated" },
+  { key: "results", label: "Mock results", desc: "Get updates when an exam result is generated" },
   { key: "streak", label: "Streak reminders", desc: "Daily challenge reminders to protect your streak" },
-  { key: "badges", label: "Badge unlocks", desc: "Know when you earn new achievement badges" },
-  { key: "newContent", label: "New content", desc: "Alerts for fresh MCQs, notes and lessons" },
-  { key: "plan", label: "Study plan updates", desc: "Notifications when your weekly plan is refreshed" },
-  { key: "payments", label: "Payment and plan alerts", desc: "Billing receipts and subscription notices" },
+  { key: "content", label: "New content", desc: "Alerts for fresh MCQs, notes and lessons" },
+  { key: "leaderboard", label: "Leaderboard movement", desc: "Notifications when your ranking changes" },
+  { key: "reminder", label: "Daily reminder nudges", desc: "A nudge to keep your streak going" },
 ];
 
 export const ACCENT_SWATCHES = [
@@ -44,5 +44,5 @@ export const ACCENT_SWATCHES = [
   { key: "plum" as const, color: "#7d4a86", name: "Plum" },
 ];
 
-export const DEFAULT_DIFFICULTIES = ["Easy", "Medium", "Hard"] as const;
+export const DEFAULT_DIFFICULTIES = ["Adaptive", "Easy", "Medium", "Hard"] as const;
 export const CONTENT_LANGUAGES = ["English", "Urdu"] as const;

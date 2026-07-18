@@ -1,7 +1,7 @@
-import { useCheckPracticeAnswerMutation } from "../../../api/practice/practice.endpoints";
+import { useSubmitPracticeAnswerMutation } from "../../../api/practice/practice.endpoints";
 
 export function useAnswerCheck() {
-  const [trigger, mutationState] = useCheckPracticeAnswerMutation();
+  const [trigger, mutationState] = useSubmitPracticeAnswerMutation();
 
   return {
     mutate: trigger,

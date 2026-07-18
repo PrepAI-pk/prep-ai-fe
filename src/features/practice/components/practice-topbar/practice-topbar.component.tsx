@@ -8,9 +8,15 @@ import {
   Popover,
   Typography,
 } from "@mui/material";
-import { useEffect, useMemo, useState, type MouseEvent } from "react";
+import { useMemo, useState, type MouseEvent } from "react";
+import {
+  useGetNotificationPreferencesQuery,
+  useGetPreferencesQuery,
+  useUpdatePreferencesMutation,
+} from "../../../../api/me/me.endpoints";
+import type { BackendAccent, NotifCategoryKey } from "../../../../api/me/me.types";
 import type { AppScreen } from "../../../../app/screens";
-import { readNotifPrefs, readUiPrefs, writeUiPrefs } from "../../../../app/settings-persistence";
+import { readUiPrefs } from "../../../../app/settings-persistence";
 
 type PracticeTopbarProps = {
   title?: string;
@@ -32,9 +38,12 @@ type TopbarNotification = {
   note: string;
   screen: AppScreen;
   read: boolean;
-  category: "mockResults" | "streak" | "badges" | "newContent" | "plan" | "payments";
+  category: NotifCategoryKey;
 };
 
+// Still hardcoded/decorative — there's no real GET /notifications feed yet.
+// Categories are mapped onto the backend's real 5 (DATABASE.md), not the 6
+// invented ones this used to use.
 const initialNotifications: TopbarNotification[] = [
   {
     id: "n1",
@@ -45,7 +54,7 @@ const initialNotifications: TopbarNotification[] = [
     note: "Your FIA Assistant Director mock is ready - 72/100, Top 9%. Review the analysis.",
     screen: "mockExams",
     read: false,
-    category: "mockResults",
+    category: "results",
   },
   {
     id: "n2",
@@ -67,7 +76,7 @@ const initialNotifications: TopbarNotification[] = [
     note: "You broke into the national top 100 this week. See where you rank.",
     screen: "leaderboard",
     read: false,
-    category: "badges",
+    category: "leaderboard",
   },
   {
     id: "n4",
@@ -78,7 +87,7 @@ const initialNotifications: TopbarNotification[] = [
     note: "42 new Current Affairs (June 2026) questions are live for your exam.",
     screen: "mcqLibrary",
     read: true,
-    category: "newContent",
+    category: "content",
   },
   {
     id: "n5",
@@ -89,7 +98,7 @@ const initialNotifications: TopbarNotification[] = [
     note: "A full mock and a weak-areas review are scheduled for Saturday.",
     screen: "studyPlan",
     read: true,
-    category: "plan",
+    category: "reminder",
   },
   {
     id: "n6",
@@ -100,7 +109,7 @@ const initialNotifications: TopbarNotification[] = [
     note: "Your PrepAI Pro plan renewed successfully. Next billing 1 Aug 2026.",
     screen: "settingsProfile",
     read: true,
-    category: "payments",
+    category: "results",
   },
 ];
 
@@ -125,34 +134,19 @@ export function PracticeTopbar(props: PracticeTopbarProps) {
 
   const [notifications, setNotifications] = useState<TopbarNotification[]>(initialNotifications);
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
-  const [notifPrefs, setNotifPrefs] = useState(() => readNotifPrefs());
-  const [uiPrefs, setUiPrefs] = useState(() => readUiPrefs());
+  const { data: notifPrefs } = useGetNotificationPreferencesQuery();
+  const { data: serverUiPrefs } = useGetPreferencesQuery();
+  const [updatePreferences] = useUpdatePreferencesMutation();
 
-  useEffect(() => {
-    function syncNotifPrefs(): void {
-      setNotifPrefs(readNotifPrefs());
-    }
-
-    function syncUiPrefs(): void {
-      setUiPrefs(readUiPrefs());
-    }
-
-    window.addEventListener("storage", syncNotifPrefs);
-    window.addEventListener("prepai-notif-prefs-updated", syncNotifPrefs as EventListener);
-    window.addEventListener("storage", syncUiPrefs);
-    window.addEventListener("prepai-ui-prefs-updated", syncUiPrefs as EventListener);
-
-    return () => {
-      window.removeEventListener("storage", syncNotifPrefs);
-      window.removeEventListener("prepai-notif-prefs-updated", syncNotifPrefs as EventListener);
-      window.removeEventListener("storage", syncUiPrefs);
-      window.removeEventListener("prepai-ui-prefs-updated", syncUiPrefs as EventListener);
-    };
-  }, []);
+  // Falls back to the paint-cache value until the query resolves (same
+  // pattern as DynamicThemeApp).
+  const uiPrefs = serverUiPrefs
+    ? { theme: serverUiPrefs.theme === "DARK" ? ("dark" as const) : ("light" as const), accent: serverUiPrefs.accent.toLowerCase() as "indigo" | "emerald" | "plum" }
+    : readUiPrefs();
 
   const visibleNotifications = useMemo(
-    () => notifications.filter((item) => notifPrefs.notif[item.category]),
-    [notifications, notifPrefs.notif],
+    () => notifications.filter((item) => !notifPrefs || notifPrefs.categories[item.category]),
+    [notifications, notifPrefs],
   );
   const unreadCount = useMemo(
     () => visibleNotifications.filter((item) => !item.read).length,
@@ -199,17 +193,11 @@ export function PracticeTopbar(props: PracticeTopbarProps) {
   }
 
   function updateAccent(accent: "indigo" | "emerald" | "plum"): void {
-    writeUiPrefs({
-      ...uiPrefs,
-      accent,
-    });
+    void updatePreferences({ accent: accent.toUpperCase() as BackendAccent });
   }
 
   function toggleTheme(): void {
-    writeUiPrefs({
-      ...uiPrefs,
-      theme: uiPrefs.theme === "light" ? "dark" : "light",
-    });
+    void updatePreferences({ theme: uiPrefs.theme === "light" ? "DARK" : "LIGHT" });
   }
 
   const themeLabel = uiPrefs.theme === "dark" ? "Dark" : "Light";

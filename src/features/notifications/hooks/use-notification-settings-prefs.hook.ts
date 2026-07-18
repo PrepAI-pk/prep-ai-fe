@@ -1,77 +1,59 @@
-import { useEffect, useState } from "react";
 import {
-  readNotifPrefs,
-  writeNotifPrefs,
-  type NotificationPrefs,
-} from "../../../app/settings-persistence";
+  useGetNotificationPreferencesQuery,
+  useUpdateNotificationPreferencesMutation,
+} from "../../../api/me/me.endpoints";
+import type {
+  BackendDigestFreq,
+  NotifCategoryKey,
+  NotifChannelKey,
+} from "../../../api/me/me.types";
 
 export function useNotificationSettingsPrefs() {
-  const [prefs, setPrefs] = useState<NotificationPrefs>(() => readNotifPrefs());
+  const { data: prefs } = useGetNotificationPreferencesQuery();
+  const [updatePrefs] = useUpdateNotificationPreferencesMutation();
 
-  useEffect(() => {
-    writeNotifPrefs(prefs);
-  }, [prefs]);
-
-  const toggleChannel = (key: keyof NotificationPrefs["nsChannels"]) => {
-    setPrefs((previous) => ({
-      ...previous,
-      nsChannels: {
-        ...previous.nsChannels,
-        [key]: !previous.nsChannels[key],
-      },
-    }));
+  const toggleChannel = (key: NotifChannelKey): void => {
+    if (!prefs) {
+      return;
+    }
+    void updatePrefs({ channels: { [key]: !prefs.channels[key] } });
   };
 
-  const toggleCategory = (key: keyof NotificationPrefs["notif"]) => {
-    setPrefs((previous) => ({
-      ...previous,
-      notif: {
-        ...previous.notif,
-        [key]: !previous.notif[key],
-      },
-    }));
+  const toggleCategory = (key: NotifCategoryKey): void => {
+    if (!prefs) {
+      return;
+    }
+    void updatePrefs({ categories: { [key]: !prefs.categories[key] } });
   };
 
-  const setReminder = (value: string) => {
-    setPrefs((previous) => ({
-      ...previous,
-      nsReminder: value,
-    }));
+  const setReminderTime = (time: string): void => {
+    void updatePrefs({ reminder: { time, enabled: time.trim().length > 0 } });
   };
 
-  const toggleQuiet = () => {
-    setPrefs((previous) => ({
-      ...previous,
-      nsQuiet: !previous.nsQuiet,
-    }));
+  const toggleQuiet = (): void => {
+    if (!prefs) {
+      return;
+    }
+    void updatePrefs({ quiet: { enabled: !prefs.quiet.enabled } });
   };
 
-  const setQuietFrom = (value: string) => {
-    setPrefs((previous) => ({
-      ...previous,
-      nsQuietFrom: value,
-    }));
+  const setQuietFrom = (from: string): void => {
+    void updatePrefs({ quiet: { from } });
   };
 
-  const setQuietTo = (value: string) => {
-    setPrefs((previous) => ({
-      ...previous,
-      nsQuietTo: value,
-    }));
+  const setQuietTo = (to: string): void => {
+    void updatePrefs({ quiet: { to } });
   };
 
-  const setDigest = (value: NotificationPrefs["nsDigest"]) => {
-    setPrefs((previous) => ({
-      ...previous,
-      nsDigest: value,
-    }));
+  const setDigest = (digestFreq: BackendDigestFreq): void => {
+    void updatePrefs({ digestFreq });
   };
 
   return {
     prefs,
     toggleChannel,
     toggleCategory,
-    setReminder,
+    setReminderTime,
     toggleQuiet,
     setQuietFrom,
     setQuietTo,

@@ -69,10 +69,6 @@ export function normalize(text: string): string {
   return text.toLowerCase().trim();
 }
 
-export function stripBodyTag(subject: string): string {
-  return subject.replace(/\s*\([^)]*\)\s*/g, "").trim();
-}
-
 export function resultTone(tone: SearchTone): SearchTonePalette {
   if (tone === "a") {
     return { bg: "secondary.light", fg: "secondary.main" };

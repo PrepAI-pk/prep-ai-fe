@@ -11,24 +11,15 @@ import {
   Typography,
 } from "@mui/material";
 import type { AppScreen } from "../../../../app/screens";
-import { useGetPracticeQuestionByIdQuery } from "../../../../api/practice/practice.endpoints";
-import {
-  PracticeTopbar,
-  usePracticeQuestions,
-  usePracticeUi,
-} from "../../../practice";
-import type {
-  BookmarkTab,
-  WeakArea,
-} from "../../bookmarks.types";
-import {
-  clamp,
-  difficultyWeight,
-  getStatus,
-  normalizeSubjectName,
-} from "../../bookmarks.utils";
+import { useUnstarQuestionMutation, useGetBookmarksQuery } from "../../../../api/bookmarks/bookmarks.endpoints";
+import { useGetWeakAreasQuery } from "../../../../api/stats/stats.endpoints";
+import type { LibraryQuestion } from "../../../../api/questions/questions.types";
+import { toApiErrorMessage } from "../../../../api/error";
+import { PracticeTopbar, usePracticeUi } from "../../../practice";
+import type { BookmarkTab } from "../../bookmarks.types";
 import {
   bookmarksWeakAreasStyles,
+  WEAK_AREA_STATUS_LABELS,
   weakAreaStatusChipSx,
 } from "./bookmarks-weak-areas.styles";
 
@@ -37,69 +28,45 @@ type BookmarksWeakAreasPageProps = {
 };
 
 type BookmarkCardProps = {
-  questionId: number;
-  onUnsave: (questionId: number) => void;
+  question: LibraryQuestion;
+  onUnsave: (questionId: string) => void;
   onPracticeSimilar: (subject: string) => void;
 };
 
 function BookmarkQuestionCard(props: BookmarkCardProps) {
-  const { questionId, onUnsave, onPracticeSimilar } = props;
-  const questionQuery = useGetPracticeQuestionByIdQuery(questionId);
-
-  if (questionQuery.isLoading) {
-    return (
-      <Paper variant="outlined" sx={bookmarksWeakAreasStyles.loadingCard}>
-        <Typography sx={bookmarksWeakAreasStyles.loadingText}>
-          Loading bookmarked question...
-        </Typography>
-      </Paper>
-    );
-  }
-
-  if (questionQuery.isError || !questionQuery.data) {
-    return (
-      <Paper variant="outlined" sx={bookmarksWeakAreasStyles.loadingCard}>
-        <Typography sx={bookmarksWeakAreasStyles.loadingText}>
-          This bookmarked question is unavailable right now.
-        </Typography>
-      </Paper>
-    );
-  }
-
-  const detail = questionQuery.data;
-  const correctIndex = typeof detail.correctIndex === "number" ? detail.correctIndex : 0;
+  const { question, onUnsave, onPracticeSimilar } = props;
 
   return (
     <Paper variant="outlined" sx={bookmarksWeakAreasStyles.loadingCard}>
       <Box sx={bookmarksWeakAreasStyles.cardHeader}>
         <Chip
           size="small"
-          label={detail.subject}
+          label={question.subject.name}
           sx={bookmarksWeakAreasStyles.subjectChip}
         />
-        <Chip size="small" label={detail.difficulty} />
+        <Chip size="small" label={question.difficulty} />
       </Box>
 
-      <Typography sx={bookmarksWeakAreasStyles.questionTitle}>{detail.questionText}</Typography>
+      <Typography sx={bookmarksWeakAreasStyles.questionTitle}>{question.questionText}</Typography>
       <Typography sx={bookmarksWeakAreasStyles.answer}>
-        Answer: {String.fromCharCode(65 + correctIndex)}. {detail.options[correctIndex]}
+        Answer: {String.fromCharCode(65 + question.correctIndex)}. {question.options[question.correctIndex]}
       </Typography>
 
       <Paper variant="outlined" sx={bookmarksWeakAreasStyles.explanationCard}>
         <Typography sx={bookmarksWeakAreasStyles.explanationKicker}>
           Explanation
         </Typography>
-        <Typography sx={bookmarksWeakAreasStyles.explanationText}>{detail.explanation}</Typography>
+        <Typography sx={bookmarksWeakAreasStyles.explanationText}>{question.explanation}</Typography>
       </Paper>
 
       <Box sx={bookmarksWeakAreasStyles.actionsRow}>
-        <Button size="small" variant="outlined" onClick={() => onUnsave(questionId)}>
+        <Button size="small" variant="outlined" onClick={() => onUnsave(question.id)}>
           Un-save
         </Button>
         <Button
           size="small"
           variant="contained"
-          onClick={() => onPracticeSimilar(normalizeSubjectName(detail.subject))}
+          onClick={() => onPracticeSimilar(question.subject.name)}
         >
           Practice similar
         </Button>
@@ -112,68 +79,14 @@ export function BookmarksWeakAreasPage(props: BookmarksWeakAreasPageProps = {}) 
   const { onNavigateScreen } = props;
   const [activeTab, setActiveTab] = useState<BookmarkTab>("bookmarks");
 
-  const questionsQuery = usePracticeQuestions();
+  const bookmarksQuery = useGetBookmarksQuery();
+  const [unstarQuestion] = useUnstarQuestionMutation();
   const practiceUi = usePracticeUi();
 
-  const questions = useMemo(() => questionsQuery.data ?? [], [questionsQuery.data]);
+  const weakAreasQuery = useGetWeakAreasQuery();
 
-  const bookmarkedQuestionIds = useMemo(
-    () =>
-      Object.entries(practiceUi.bookmarks)
-        .filter(([, isBookmarked]) => isBookmarked)
-        .map(([id]) => Number(id))
-        .sort((a, b) => b - a),
-    [practiceUi.bookmarks],
-  );
-
-  const weakAreas = useMemo<WeakArea[]>(() => {
-    if (questions.length === 0) {
-      return [];
-    }
-
-    const bySubject = new Map<
-      string,
-      {
-        total: number;
-        weightedDifficulty: number;
-        bookmarked: number;
-      }
-    >();
-
-    for (const question of questions) {
-      const subject = normalizeSubjectName(question.subject);
-      const current = bySubject.get(subject) ?? { total: 0, weightedDifficulty: 0, bookmarked: 0 };
-      const isBookmarked = !!practiceUi.bookmarks[question.id];
-
-      bySubject.set(subject, {
-        total: current.total + 1,
-        weightedDifficulty: current.weightedDifficulty + difficultyWeight(question.difficulty),
-        bookmarked: current.bookmarked + (isBookmarked ? 1 : 0),
-      });
-    }
-
-    return Array.from(bySubject.entries())
-      .map(([subject, bucket]) => {
-        const averageDifficulty = bucket.weightedDifficulty / bucket.total;
-        const bookmarkRatio = bucket.bookmarked / bucket.total;
-
-        const accuracy = clamp(Math.round(88 - averageDifficulty * 14 - bookmarkRatio * 24), 28, 92);
-        const solvedCount = bucket.total * 3 + bucket.bookmarked * 2;
-
-        return {
-          subject,
-          accuracy,
-          solvedCount,
-          status: getStatus(accuracy),
-        };
-      })
-      .sort((a, b) => a.accuracy - b.accuracy);
-  }, [practiceUi.bookmarks, questions]);
-
-  const weakestSubjects = useMemo(
-    () => weakAreas.slice(0, 2).map((item) => item.subject),
-    [weakAreas],
-  );
+  const bookmarks = useMemo(() => bookmarksQuery.data?.items ?? [], [bookmarksQuery.data]);
+  const weakAreas = useMemo(() => weakAreasQuery.data?.subjects ?? [], [weakAreasQuery.data]);
 
   function handlePracticeSimilar(subject: string): void {
     practiceUi.setSelectedSubject(subject);
@@ -212,21 +125,27 @@ export function BookmarksWeakAreasPage(props: BookmarksWeakAreasPageProps = {}) 
           {activeTab === "bookmarks" && (
             <Box sx={bookmarksWeakAreasStyles.sectionWrap}>
               <Typography sx={bookmarksWeakAreasStyles.countLabel}>
-                {bookmarkedQuestionIds.length} saved MCQs
+                {bookmarks.length} saved MCQs
               </Typography>
 
-              {bookmarkedQuestionIds.length === 0 && (
+              {bookmarksQuery.isError && (
+                <Alert severity="error" sx={bookmarksWeakAreasStyles.infoAlert}>
+                  Could not load bookmarks. {toApiErrorMessage(bookmarksQuery.error, "Please try again.")}
+                </Alert>
+              )}
+
+              {!bookmarksQuery.isLoading && !bookmarksQuery.isError && bookmarks.length === 0 && (
                 <Alert severity="info" sx={bookmarksWeakAreasStyles.infoAlert}>
                   No bookmarks yet. Save questions from the MCQ Library to build your revision stack.
                 </Alert>
               )}
 
               <Box sx={bookmarksWeakAreasStyles.bookmarksGrid}>
-                {bookmarkedQuestionIds.map((questionId) => (
+                {bookmarks.map((question) => (
                   <BookmarkQuestionCard
-                    key={questionId}
-                    questionId={questionId}
-                    onUnsave={practiceUi.toggleBookmark}
+                    key={question.id}
+                    question={question}
+                    onUnsave={(questionId) => void unstarQuestion(questionId)}
                     onPracticeSimilar={handlePracticeSimilar}
                   />
                 ))}
@@ -241,30 +160,34 @@ export function BookmarksWeakAreasPage(props: BookmarksWeakAreasPageProps = {}) 
                   AI Insight
                 </Typography>
                 <Typography sx={bookmarksWeakAreasStyles.insightText}>
-                  Focus this week on {weakestSubjects[0] ?? "your least-accurate subject"}
-                  {weakestSubjects[1] ? ` and ${weakestSubjects[1]}` : ""}. Run 10 timed MCQs, then
-                  revise the linked concepts for faster score recovery.
+                  {weakAreasQuery.data?.insight ?? "Insights will appear once you've answered a few questions."}
                 </Typography>
               </Paper>
 
-              {weakAreas.length === 0 && (
+              {weakAreasQuery.isError && (
+                <Alert severity="error" sx={bookmarksWeakAreasStyles.infoAlert}>
+                  Could not load weak areas. {toApiErrorMessage(weakAreasQuery.error, "Please try again.")}
+                </Alert>
+              )}
+
+              {!weakAreasQuery.isLoading && !weakAreasQuery.isError && weakAreas.length === 0 && (
                 <Alert severity="info" sx={bookmarksWeakAreasStyles.infoAlert}>
-                  Weak-area insights will appear once questions are available.
+                  Weak-area insights will appear once you've answered a few practice questions.
                 </Alert>
               )}
 
               {weakAreas.map((area) => {
                 return (
-                  <Paper key={area.subject} variant="outlined" sx={bookmarksWeakAreasStyles.weakAreaCard}>
+                  <Paper key={area.subjectId} variant="outlined" sx={bookmarksWeakAreasStyles.weakAreaCard}>
                     <Box sx={bookmarksWeakAreasStyles.weakAreaHeader}>
                       <Box>
-                        <Typography sx={bookmarksWeakAreasStyles.weakAreaTitle}>{area.subject}</Typography>
+                        <Typography sx={bookmarksWeakAreasStyles.weakAreaTitle}>{area.name}</Typography>
                         <Typography sx={bookmarksWeakAreasStyles.weakAreaSolved}>
-                          Solved: {area.solvedCount}
+                          Solved: {area.solved}
                         </Typography>
                       </Box>
                       <Chip
-                        label={area.status}
+                        label={WEAK_AREA_STATUS_LABELS[area.status]}
                         size="small"
                         sx={weakAreaStatusChipSx(area.status)}
                       />
@@ -272,18 +195,18 @@ export function BookmarksWeakAreasPage(props: BookmarksWeakAreasPageProps = {}) 
 
                     <LinearProgress
                       variant="determinate"
-                      value={area.accuracy}
+                      value={area.acc}
                       sx={bookmarksWeakAreasStyles.accuracyBar}
                     />
                     <Typography sx={bookmarksWeakAreasStyles.accuracyLabel}>
-                      Accuracy: {area.accuracy}%
+                      Accuracy: {area.acc}%
                     </Typography>
 
                     <Box sx={bookmarksWeakAreasStyles.actionsRow}>
                       <Button
                         size="small"
                         variant="contained"
-                        onClick={() => handlePracticeSimilar(area.subject)}
+                        onClick={() => handlePracticeSimilar(area.name)}
                       >
                         Practice
                       </Button>

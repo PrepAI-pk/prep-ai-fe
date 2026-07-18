@@ -14,7 +14,7 @@ export const CHANNEL_ROWS: NotificationChannelRow[] = [
   {
     key: "email",
     label: "Email",
-    desc: "ayesha.khan@gmail.com",
+    desc: "Sent to your account email",
     icon: "✉",
   },
   {
@@ -25,12 +25,21 @@ export const CHANNEL_ROWS: NotificationChannelRow[] = [
   },
 ];
 
+// The real 5 categories (DATABASE.md) — the frontend used to show 6 invented
+// ones (mockResults/badges/newContent/plan/payments) that didn't match the
+// backend's actual NotifCategory enum.
 export const CATEGORY_ROWS: NotificationCategoryRow[] = [
+  { key: "reminder", label: "Daily reminder nudges" },
   { key: "streak", label: "Streak alerts" },
-  { key: "newContent", label: "New content for my exam" },
-  { key: "mockResults", label: "Mock results & analysis" },
-  { key: "plan", label: "Leaderboard movement" },
-  { key: "badges", label: "Badge unlocks" },
+  { key: "content", label: "New content for my exam" },
+  { key: "leaderboard", label: "Leaderboard movement" },
+  { key: "results", label: "Mock results & analysis" },
 ];
 
-export const DIGEST_OPTIONS: NotificationDigest[] = ["Off", "Daily", "Weekly"];
+export const DIGEST_OPTIONS: NotificationDigest[] = ["OFF", "DAILY", "WEEKLY"];
+
+export const DIGEST_LABELS: Record<NotificationDigest, string> = {
+  OFF: "Off",
+  DAILY: "Daily",
+  WEEKLY: "Weekly",
+};

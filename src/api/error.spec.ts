@@ -47,4 +47,27 @@ describe("toApiErrorMessage", () => {
     const message = toApiErrorMessage(undefined, "fallback");
     expect(message).toBe("fallback");
   });
+
+  it("flattens Zod issues from the new backend error envelope", () => {
+    const message = toApiErrorMessage(
+      {
+        status: 422,
+        data: {
+          statusCode: 422,
+          code: "VALIDATION_FAILED",
+          message: "Validation failed",
+          details: {
+            issues: [
+              { path: ["email"], message: "Invalid email address" },
+              { path: ["password"], message: "Too small: expected string to have >=8 characters" },
+            ],
+          },
+        },
+      },
+      "fallback",
+    );
+
+    expect(message).toContain("Invalid email address");
+    expect(message).toContain("Too small: expected string to have >=8 characters");
+  });
 });

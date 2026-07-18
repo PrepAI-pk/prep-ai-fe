@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { Alert, Box, Button, Chip, Paper, Typography } from "@mui/material";
 import type { AppScreen } from "../../../../app/screens";
 import { toApiErrorMessage } from "../../../../api/error";
-import type { MockExam } from "../../mock-exams.types";
+import { useGetRecentAttemptsQuery, useStartAttemptMutation } from "../../../../api/mock-exams/mock-exams.endpoints";
+import type { Exam, StartAttemptResponse } from "../../mock-exams.types";
 import { PracticeTopbar } from "../../../practice";
 import {
   MOCK_EXAMS_EMPTY_TEXT,
@@ -11,17 +13,36 @@ import {
   MOCK_EXAMS_START_BUTTON_TEXT,
 } from "../../mock-exams.constants";
 import { useMockExams } from "../../hooks/use-mock-exams.hook";
-import { mockExamsStyles } from "../../mock-exams.styles";
+import { mockExamsStyles, recentAttemptScoreSx } from "../../mock-exams.styles";
 
 type MockExamsPageProps = {
   onNavigateScreen?: (screen: AppScreen) => void;
-  onStartExam?: (exam: MockExam) => void;
+  onStarted?: (start: StartAttemptResponse) => void;
 };
 
 export function MockExamsPage(props: MockExamsPageProps = {}) {
-  const { onNavigateScreen, onStartExam } = props;
+  const { onNavigateScreen, onStarted } = props;
   const mockExamsQuery = useMockExams();
+  const recentQuery = useGetRecentAttemptsQuery();
+  const [startAttempt, { isLoading: isStarting }] = useStartAttemptMutation();
+  const [startingExamId, setStartingExamId] = useState<string | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
+
   const mockExams = mockExamsQuery.data ?? [];
+  const recentAttempts = recentQuery.data ?? [];
+
+  async function handleStart(exam: Exam): Promise<void> {
+    setStartError(null);
+    setStartingExamId(exam.id);
+    try {
+      const start = await startAttempt(exam.id).unwrap();
+      onStarted?.(start);
+    } catch (error) {
+      setStartError(toApiErrorMessage(error, "Could not start this exam. Please try again."));
+    } finally {
+      setStartingExamId(null);
+    }
+  }
 
   return (
     <Box sx={mockExamsStyles.shell}>
@@ -59,6 +80,12 @@ export function MockExamsPage(props: MockExamsPageProps = {}) {
               </Alert>
             )}
 
+            {startError && (
+              <Alert severity="error" sx={mockExamsStyles.stateCard} onClose={() => setStartError(null)}>
+                {startError}
+              </Alert>
+            )}
+
             {!mockExamsQuery.isLoading && !mockExamsQuery.isError && mockExams.length === 0 && (
               <Alert severity="info" sx={mockExamsStyles.stateCard}>
                 {MOCK_EXAMS_EMPTY_TEXT}
@@ -76,26 +103,44 @@ export function MockExamsPage(props: MockExamsPageProps = {}) {
                   </Box>
 
                   <Typography variant="h3" sx={mockExamsStyles.examTitle}>
-                    {exam.title}
+                    {exam.name}
                   </Typography>
 
                   <Typography sx={mockExamsStyles.examDetails}>
-                    {exam.questionsCount} Q · {exam.durationMinutes} min ·
-                    {exam.negativeMarking > 0
-                      ? ` -${exam.negativeMarking} neg`
-                      : " no neg"}
+                    {exam.questionCount} Q · {exam.durationMins} min · {exam.negLabel}
                   </Typography>
 
                   <Button
                     variant="contained"
                     sx={mockExamsStyles.startButton}
-                    onClick={() => onStartExam?.(exam)}
+                    onClick={() => void handleStart(exam)}
+                    disabled={isStarting && startingExamId === exam.id}
                   >
-                    {MOCK_EXAMS_START_BUTTON_TEXT}
+                    {isStarting && startingExamId === exam.id ? "Starting…" : MOCK_EXAMS_START_BUTTON_TEXT}
                   </Button>
                 </Paper>
               ))}
             </Box>
+
+            {recentAttempts.length > 0 && (
+              <>
+                <Typography sx={mockExamsStyles.recentAttemptsTitle}>Recent attempts</Typography>
+                {recentAttempts.map((attempt) => {
+                  const pct = attempt.total ? Math.round((attempt.score / attempt.total) * 100) : 0;
+                  return (
+                    <Paper key={attempt.attemptId} variant="outlined" sx={mockExamsStyles.recentAttemptRow}>
+                      <Box>
+                        <Typography sx={mockExamsStyles.recentAttemptExam}>{attempt.examName}</Typography>
+                        <Typography sx={mockExamsStyles.recentAttemptMeta}>{attempt.rank}</Typography>
+                      </Box>
+                      <Typography sx={recentAttemptScoreSx(pct)}>
+                        {attempt.score} / {attempt.total}
+                      </Typography>
+                    </Paper>
+                  );
+                })}
+              </>
+            )}
           </Box>
         </Box>
       </Box>

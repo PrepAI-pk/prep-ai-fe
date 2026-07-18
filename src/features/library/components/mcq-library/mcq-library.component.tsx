@@ -13,18 +13,11 @@ import {
 } from "@mui/material";
 import type { AppScreen } from "../../../../app/screens";
 import { toApiErrorMessage } from "../../../../api/error";
-import { useGetPracticeQuestionByIdQuery } from "../../../../api/practice/practice.endpoints";
-import {
-  deriveSubjects,
-  PracticeTopbar,
-  usePracticeQuestions,
-  usePracticeUi,
-} from "../../../practice";
-import {
-  extractExam,
-  LIBRARY_ALL_FILTER,
-  normalize,
-} from "../../mcq-library.constants";
+import { useStarQuestionMutation, useUnstarQuestionMutation } from "../../../../api/bookmarks/bookmarks.endpoints";
+import { useGetRelatedQuestionsQuery, useListQuestionsQuery } from "../../../../api/questions/questions.endpoints";
+import { useGetSubjectsQuery } from "../../../../api/subjects/subjects.endpoints";
+import { PracticeTopbar } from "../../../practice";
+import { LIBRARY_ALL_FILTER, normalize } from "../../mcq-library.constants";
 import {
   answerOptionSx,
   filterChipSx,
@@ -36,79 +29,84 @@ type McqLibraryPageProps = {
   onNavigateScreen?: (screen: AppScreen) => void;
 };
 
+// The full library is 14 seed questions today — one generous page stands in
+// for real infinite-scroll pagination until the Library needs more than that.
+const LIBRARY_PAGE_LIMIT = 100;
+
 export function McqLibraryPage(props: McqLibraryPageProps = {}) {
   const { onNavigateScreen } = props;
-  const questionsQuery = usePracticeQuestions();
-  const practiceUi = usePracticeUi();
 
   const [searchValue, setSearchValue] = useState("");
   const [selectedSubject, setSelectedSubject] = useState(LIBRARY_ALL_FILTER);
   const [selectedExam, setSelectedExam] = useState(LIBRARY_ALL_FILTER);
   const [selectedLevel, setSelectedLevel] = useState(LIBRARY_ALL_FILTER);
   const [bookmarkedOnly, setBookmarkedOnly] = useState(false);
-  const [expandedQuestionId, setExpandedQuestionId] = useState<number | null>(null);
+  const [expandedQuestionId, setExpandedQuestionId] = useState<string | null>(null);
 
-  const questions = useMemo(() => questionsQuery.data ?? [], [questionsQuery.data]);
-  const subjects = useMemo(() => deriveSubjects(questions), [questions]);
+  const subjectsQuery = useGetSubjectsQuery();
+  const subjectId =
+    selectedSubject === LIBRARY_ALL_FILTER
+      ? undefined
+      : subjectsQuery.data?.find((subject) => subject.name === selectedSubject)?.id;
+
+  const questionsQuery = useListQuestionsQuery({
+    limit: LIBRARY_PAGE_LIMIT,
+    subjectId,
+    difficulty: selectedLevel === LIBRARY_ALL_FILTER ? undefined : (selectedLevel as "EASY" | "MEDIUM" | "HARD"),
+    bookmarked: bookmarkedOnly ? true : undefined,
+  });
+
+  const [starQuestion] = useStarQuestionMutation();
+  const [unstarQuestion] = useUnstarQuestionMutation();
+
+  const questions = useMemo(() => questionsQuery.data?.items ?? [], [questionsQuery.data]);
+  const subjects = useMemo(
+    () => [LIBRARY_ALL_FILTER, ...(subjectsQuery.data ?? []).map((subject) => subject.name).sort()],
+    [subjectsQuery.data],
+  );
   const exams = useMemo(() => {
-    const unique = Array.from(new Set(questions.map((question) => extractExam(question.subject))));
+    const unique = Array.from(
+      new Set(questions.map((question) => question.exam?.body).filter((body): body is string => Boolean(body))),
+    );
     return [LIBRARY_ALL_FILTER, ...unique.sort()];
   }, [questions]);
-  const levels = useMemo(() => {
-    const unique = Array.from(new Set(questions.map((question) => question.difficulty)));
-    return [LIBRARY_ALL_FILTER, ...unique.sort()];
-  }, [questions]);
+  const levels = [LIBRARY_ALL_FILTER, "EASY", "MEDIUM", "HARD"];
 
+  // Subject/level/bookmarked are server-side filters (see the query above);
+  // exam-body and free-text search stay client-side over the fetched page —
+  // /questions only filters by a specific examId, not a body like "FPSC".
   const filteredQuestions = useMemo(() => {
     const q = normalize(searchValue);
 
     return questions.filter((question) => {
-      const subjectOk = selectedSubject === LIBRARY_ALL_FILTER || question.subject === selectedSubject;
-      const examOk = selectedExam === LIBRARY_ALL_FILTER || extractExam(question.subject) === selectedExam;
-      const levelOk = selectedLevel === LIBRARY_ALL_FILTER || question.difficulty === selectedLevel;
-      const bookmarkOk = !bookmarkedOnly || !!practiceUi.bookmarks[question.id];
+      const examOk = selectedExam === LIBRARY_ALL_FILTER || question.exam?.body === selectedExam;
       const searchOk =
         q.length === 0 ||
         normalize(question.questionText).includes(q) ||
-        normalize(question.subject).includes(q) ||
+        normalize(question.subject.name).includes(q) ||
         question.options.some((option) => normalize(option).includes(q));
 
-      return subjectOk && examOk && levelOk && bookmarkOk && searchOk;
+      return examOk && searchOk;
     });
-  }, [
-    bookmarkedOnly,
-    practiceUi.bookmarks,
-    questions,
-    searchValue,
-    selectedExam,
-    selectedLevel,
-    selectedSubject,
-  ]);
+  }, [questions, searchValue, selectedExam]);
 
   const expandedQuestion = useMemo(
     () => filteredQuestions.find((question) => question.id === expandedQuestionId) ?? null,
     [expandedQuestionId, filteredQuestions],
   );
 
-  const expandedQuestionQuery = useGetPracticeQuestionByIdQuery(expandedQuestionId ?? -1, {
-    skip: expandedQuestionId === null,
-  });
+  const relatedQuery = useGetRelatedQuestionsQuery(
+    { questionId: expandedQuestionId ?? "" },
+    { skip: expandedQuestionId === null },
+  );
+  const relatedQuestions = relatedQuery.data?.items ?? [];
 
-  const relatedQuestions = useMemo(() => {
-    if (!expandedQuestion) {
-      return [];
-    }
-
-    return questions
-      .filter(
-        (question) =>
-          question.id !== expandedQuestion.id && question.subject === expandedQuestion.subject,
-      )
-      .slice(0, 3);
-  }, [expandedQuestion, questions]);
-
-  function toggleExpanded(questionId: number): void {
+  function toggleExpanded(questionId: string): void {
     setExpandedQuestionId((previous) => (previous === questionId ? null : questionId));
+  }
+
+  function handleToggleBookmark(questionId: string, isBookmarked: boolean): void {
+    void (isBookmarked ? unstarQuestion(questionId) : starQuestion(questionId));
   }
 
   return (
@@ -210,7 +208,6 @@ export function McqLibraryPage(props: McqLibraryPageProps = {}) {
           <Box sx={mcqLibraryStyles.questionsGrid}>
             {filteredQuestions.map((question) => {
               const isExpanded = expandedQuestionId === question.id;
-              const detail = isExpanded ? expandedQuestionQuery.data : undefined;
 
               return (
                 <Paper
@@ -223,7 +220,7 @@ export function McqLibraryPage(props: McqLibraryPageProps = {}) {
                       <Box sx={mcqLibraryStyles.questionMeta}>
                         <Chip
                           size="small"
-                          label={question.subject}
+                          label={question.subject.name}
                           sx={smallSubjectChipSx}
                         />
                         <Chip size="small" label={question.difficulty} />
@@ -233,8 +230,11 @@ export function McqLibraryPage(props: McqLibraryPageProps = {}) {
                     </Box>
 
                     <Box sx={{ display: "flex", alignItems: "start", gap: 0.2 }}>
-                      <IconButton onClick={() => practiceUi.toggleBookmark(question.id)} size="small">
-                        {practiceUi.bookmarks[question.id] ? <BookmarkRounded /> : <BookmarkBorderRounded />}
+                      <IconButton
+                        onClick={() => handleToggleBookmark(question.id, question.isBookmarked)}
+                        size="small"
+                      >
+                        {question.isBookmarked ? <BookmarkRounded /> : <BookmarkBorderRounded />}
                       </IconButton>
                     </Box>
                   </Box>
@@ -243,11 +243,11 @@ export function McqLibraryPage(props: McqLibraryPageProps = {}) {
 
                   {isExpanded && (
                     <Box sx={mcqLibraryStyles.detailsGrid}>
-                      {detail?.options.map((option, index) => (
+                      {expandedQuestion?.options.map((option, index) => (
                         <Paper
                           key={`${question.id}-${index}`}
                           variant="outlined"
-                          sx={answerOptionSx(detail.correctIndex === index)}
+                          sx={answerOptionSx(expandedQuestion.correctIndex === index)}
                         >
                           <Typography sx={{ fontSize: 14 }}>
                             {String.fromCharCode(65 + index)}. {option}
@@ -263,7 +263,7 @@ export function McqLibraryPage(props: McqLibraryPageProps = {}) {
                           AI Explanation
                         </Typography>
                         <Typography sx={{ mt: 0.8, lineHeight: 1.7 }}>
-                          {detail?.explanation ?? "Loading explanation..."}
+                          {expandedQuestion?.explanation ?? "Loading explanation..."}
                         </Typography>
                       </Paper>
 

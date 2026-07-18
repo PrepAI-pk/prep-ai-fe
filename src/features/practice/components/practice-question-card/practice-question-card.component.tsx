@@ -3,10 +3,9 @@ import BookmarkBorderRounded from "@mui/icons-material/BookmarkBorderRounded";
 import BookmarkRounded from "@mui/icons-material/BookmarkRounded";
 import { Alert, Box, Button, Chip, IconButton, Paper, Typography } from "@mui/material";
 import type {
-  CheckPracticeAnswerResponse,
-  PracticeQuestion,
+  PracticeAnswerResponse,
+  PracticeNextQuestion,
 } from "../../../../api/practice/practice.types";
-import type { BookmarkMap } from "../../practice.types";
 import {
   getDifficultyColor,
   getOptionMark,
@@ -14,14 +13,14 @@ import {
 } from "../../practice-ui.utils";
 
 type PracticeQuestionCardProps = {
-  question: PracticeQuestion;
+  question: PracticeNextQuestion;
   questionCounter: string;
   interactionState: "idle" | "checking" | "revealed";
   selectedOptionIndex: number | null;
   isLocked: boolean;
-  checkResult: CheckPracticeAnswerResponse | undefined;
-  bookmarks: BookmarkMap;
-  onToggleBookmark: (questionId: number) => void;
+  checkResult: PracticeAnswerResponse | undefined;
+  isBookmarked: boolean;
+  onToggleBookmark: () => void;
   onSelectOption: (optionIndex: number) => void;
   onAskFollowUp: () => void;
   onSkipQuestion: () => void;
@@ -36,7 +35,7 @@ export function PracticeQuestionCard(props: PracticeQuestionCardProps) {
     selectedOptionIndex,
     isLocked,
     checkResult,
-    bookmarks,
+    isBookmarked,
     onToggleBookmark,
     onSelectOption,
     onAskFollowUp,
@@ -61,7 +60,7 @@ export function PracticeQuestionCard(props: PracticeQuestionCardProps) {
       <Box sx={{ mb: 2, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           <Chip
-            label={question.subject}
+            label={question.subject.name}
             size="small"
             sx={{
               borderRadius: 2,
@@ -93,10 +92,10 @@ export function PracticeQuestionCard(props: PracticeQuestionCardProps) {
           </Typography>
           <IconButton
             size="small"
-            onClick={() => onToggleBookmark(question.id)}
-            sx={{ color: bookmarks[question.id] ? "secondary.main" : "text.secondary" }}
+            onClick={onToggleBookmark}
+            sx={{ color: isBookmarked ? "secondary.main" : "text.secondary" }}
           >
-            {bookmarks[question.id] ? (
+            {isBookmarked ? (
               <BookmarkRounded fontSize="small" />
             ) : (
               <BookmarkBorderRounded fontSize="small" />
@@ -111,7 +110,7 @@ export function PracticeQuestionCard(props: PracticeQuestionCardProps) {
 
       <Box sx={{ display: "grid", gap: 1.4 }}>
         {question.options.map((option, index) => {
-          const visualStyle = getOptionVisualStyle(index, checkResult);
+          const visualStyle = getOptionVisualStyle(index, checkResult, selectedOptionIndex);
           const isCheckingSelection =
             interactionState === "checking" && selectedOptionIndex === index;
           const checkingStyles = isCheckingSelection
@@ -184,7 +183,7 @@ export function PracticeQuestionCard(props: PracticeQuestionCardProps) {
                 <Typography sx={{ color: "text.secondary", fontSize: 12, fontWeight: 600 }}>
                   {isCheckingSelection
                     ? "Checking..."
-                    : getOptionMark(index, checkResult)}
+                    : getOptionMark(index, checkResult, selectedOptionIndex)}
                 </Typography>
               </Box>
             </Paper>

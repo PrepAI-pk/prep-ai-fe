@@ -1,25 +1,58 @@
 import Google from "@mui/icons-material/Google";
-import { Box, Button, TextField, Typography } from "@mui/material";
+import { Alert, Box, Button, TextField, Typography } from "@mui/material";
 import { useState } from "react";
-import type { AuthenticatedUser, AuthMode } from "../../auth.types";
+import {
+  useGoogleAuthMutation,
+  useLoginMutation,
+  useRegisterMutation,
+} from "../../../../api/auth/auth.endpoints";
+import { toApiErrorMessage } from "../../../../api/error";
+import { useAppDispatch } from "../../../../store/hooks";
+import { authSucceeded } from "../../../../store/slices/auth-slice";
+import type { AuthMode } from "../../auth.types";
 
-type AuthGateProps = {
-  onAuthenticated: (user: AuthenticatedUser) => void;
-};
-
-export function AuthGate(props: AuthGateProps) {
-  const { onAuthenticated } = props;
-
+export function AuthGate() {
   const [authMode, setAuthMode] = useState<AuthMode>("signup");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  function handleSubmit(): void {
-    onAuthenticated({
-      name: name.trim() || email.split("@")[0] || "Aspirant",
-      email,
-    });
+  const dispatch = useAppDispatch();
+  const [register, { isLoading: isRegistering }] = useRegisterMutation();
+  const [login, { isLoading: isLoggingIn }] = useLoginMutation();
+  const [googleAuth, { isLoading: isGoogleLoading }] = useGoogleAuthMutation();
+
+  const isSubmitting = isRegistering || isLoggingIn;
+
+  async function handleSubmit(): Promise<void> {
+    setErrorMessage(null);
+    try {
+      const result =
+        authMode === "signup"
+          ? await register({
+              fullName: name.trim() || email.split("@")[0] || "Aspirant",
+              email,
+              password,
+            }).unwrap()
+          : await login({ email, password }).unwrap();
+
+      dispatch(authSucceeded(result));
+    } catch (error) {
+      setErrorMessage(toApiErrorMessage(error, "Something went wrong. Please try again."));
+    }
+  }
+
+  async function handleGoogle(): Promise<void> {
+    setErrorMessage(null);
+    try {
+      // No real Google credential flow wired up yet — this always reaches
+      // the backend's "not configured" stub, which is the point: an honest
+      // message instead of a dead button.
+      await googleAuth({ idToken: "frontend-placeholder" }).unwrap();
+    } catch (error) {
+      setErrorMessage(toApiErrorMessage(error, "Google sign-in isn't available yet."));
+    }
   }
 
   return (
@@ -178,10 +211,18 @@ export function AuthGate(props: AuthGateProps) {
               : "Log in to continue where you left off."}
           </Typography>
 
+          {errorMessage && (
+            <Alert severity="error" sx={{ mt: 2, borderRadius: "10px" }} onClose={() => setErrorMessage(null)}>
+              {errorMessage}
+            </Alert>
+          )}
+
           <Box sx={{ mt: 3, display: "grid", gap: 1.4 }}>
             <Button
               variant="outlined"
               startIcon={<Google />}
+              onClick={handleGoogle}
+              disabled={isGoogleLoading}
               sx={{
                 justifyContent: "flex-start",
                 borderRadius: "12px",
@@ -208,6 +249,7 @@ export function AuthGate(props: AuthGateProps) {
                 placeholder="Full name"
                 value={name}
                 onChange={(event) => setName(event.target.value)}
+                disabled={isSubmitting}
                 sx={{ "& .MuiOutlinedInput-root": { borderRadius: "12px", background: "#fff" } }}
               />
             )}
@@ -217,6 +259,7 @@ export function AuthGate(props: AuthGateProps) {
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
+              disabled={isSubmitting}
               sx={{ "& .MuiOutlinedInput-root": { borderRadius: "12px", background: "#fff" } }}
             />
             <TextField
@@ -224,12 +267,16 @@ export function AuthGate(props: AuthGateProps) {
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
+              disabled={isSubmitting}
               sx={{ "& .MuiOutlinedInput-root": { borderRadius: "12px", background: "#fff" } }}
             />
 
             <Button
               variant="text"
-              onClick={() => setAuthMode((prev) => (prev === "signup" ? "login" : "signup"))}
+              onClick={() => {
+                setErrorMessage(null);
+                setAuthMode((prev) => (prev === "signup" ? "login" : "signup"));
+              }}
               sx={{
                 justifyContent: "flex-start",
                 width: "fit-content",
@@ -246,6 +293,7 @@ export function AuthGate(props: AuthGateProps) {
           <Button
             variant="contained"
             onClick={handleSubmit}
+            disabled={isSubmitting || !email || !password}
             sx={{
               mt: 2.6,
               borderRadius: "12px",
@@ -258,7 +306,11 @@ export function AuthGate(props: AuthGateProps) {
               "&:hover": { bgcolor: "#2a4478", boxShadow: "none" },
             }}
           >
-            {authMode === "signup" ? "Create account" : "Log in"}
+            {isSubmitting
+              ? "Please wait…"
+              : authMode === "signup"
+                ? "Create account"
+                : "Log in"}
           </Button>
         </Box>
       </Box>

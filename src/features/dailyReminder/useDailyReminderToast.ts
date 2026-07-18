@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
+import { useGetNotificationPreferencesQuery } from "../../api/me/me.endpoints";
 import { isDailyChallengeDoneToday } from "../../app/daily-challenge-persistence";
-import { readNotifPrefs } from "../../app/settings-persistence";
 import { SCREEN_TO_PATH } from "../../routes/route-paths";
 
 export function useDailyReminderToast(): {
@@ -13,8 +13,8 @@ export function useDailyReminderToast(): {
   const [dismissed, setDismissed] = useState(false);
   const [readyForPath, setReadyForPath] = useState<string | null>(null);
 
-  const reminderPrefs = readNotifPrefs();
-  const reminderEnabled = reminderPrefs.nsReminder.trim().length > 0;
+  const { data: reminderPrefs } = useGetNotificationPreferencesQuery();
+  const reminderEnabled = Boolean(reminderPrefs?.reminder.enabled);
   const dailyDone = isDailyChallengeDoneToday();
 
   const eligible =

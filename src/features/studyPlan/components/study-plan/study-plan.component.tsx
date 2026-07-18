@@ -6,8 +6,8 @@ import {
   Typography,
 } from "@mui/material";
 import type { AppScreen } from "../../../../app/screens";
+import { useGetSubjectsQuery } from "../../../../api/subjects/subjects.endpoints";
 import { PracticeTopbar } from "../../../practice";
-import { usePracticeQuestions } from "../../../practice";
 
 type StudyPlanPageProps = {
   onNavigateScreen?: (screen: AppScreen) => void;
@@ -117,17 +117,16 @@ function createWeekPlan(weakSubjects: WeakSubject[], dailyHours: number): PlanDa
 
 export function StudyPlanPage(props: StudyPlanPageProps = {}) {
   const { onNavigateScreen } = props;
-  const questionsQuery = usePracticeQuestions();
+  const subjectsQuery = useGetSubjectsQuery();
 
   const [goal, setGoal] = useState("CSS Screening");
   const [dailyHours, setDailyHours] = useState(2);
   const [doneMap, setDoneMap] = useState<Record<string, boolean>>({});
 
   const subjects = useMemo(() => {
-    const questions = questionsQuery.data ?? [];
-    const values = Array.from(new Set(questions.map((question) => question.subject)));
+    const values = (subjectsQuery.data ?? []).map((subject) => subject.name);
     return values.length > 0 ? values : ["Pakistan Affairs", "Current Affairs", "General Knowledge"];
-  }, [questionsQuery.data]);
+  }, [subjectsQuery.data]);
 
   const weakSubjects = useMemo(() => deriveWeakSubjects(subjects), [subjects]);
   const weekPlan = useMemo(() => createWeekPlan(weakSubjects, dailyHours), [dailyHours, weakSubjects]);

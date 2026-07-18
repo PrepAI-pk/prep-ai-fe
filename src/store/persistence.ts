@@ -11,14 +11,6 @@ export type PersistedState = {
   session: SessionState;
 };
 
-function isBookmarkRecord(value: unknown): value is Record<number, boolean> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return false;
-  }
-
-  return Object.values(value).every((bookmarkValue) => typeof bookmarkValue === "boolean");
-}
-
 function sanitizePersistedState(value: unknown): PersistedState | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return undefined;
@@ -35,23 +27,12 @@ function sanitizePersistedState(value: unknown): PersistedState | undefined {
     return undefined;
   }
 
-  const ui = practiceUi as {
-    selectedSubject?: unknown;
-    currentIndex?: unknown;
-    bookmarks?: unknown;
-  };
+  const ui = practiceUi as { selectedSubject?: unknown };
 
   const selectedSubject =
     typeof ui.selectedSubject === "string" && ui.selectedSubject.length > 0
       ? ui.selectedSubject
       : "All";
-
-  const currentIndex =
-    typeof ui.currentIndex === "number" && Number.isInteger(ui.currentIndex) && ui.currentIndex >= 0
-      ? ui.currentIndex
-      : 0;
-
-  const bookmarks = isBookmarkRecord(ui.bookmarks) ? ui.bookmarks : {};
 
   // ---- dailyChallenge ----
   const rawDc = candidate.dailyChallenge;
@@ -121,8 +102,6 @@ function sanitizePersistedState(value: unknown): PersistedState | undefined {
   return {
     practiceUi: {
       selectedSubject,
-      currentIndex,
-      bookmarks,
     },
     dailyChallenge: {
       lastCompletedDateKey,

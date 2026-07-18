@@ -1,4 +1,4 @@
-import type { WeakAreaStatus } from "../../bookmarks.types";
+import type { WeakAreaStatus } from "../../../../api/stats/stats.types";
 
 export const bookmarksWeakAreasStyles = {
   root: {
@@ -109,13 +109,15 @@ export const bookmarksWeakAreasStyles = {
   explanationText: { fontSize: 13, lineHeight: 1.65 },
 } as const;
 
+export const WEAK_AREA_STATUS_LABELS: Record<WeakAreaStatus, string> = {
+  NEEDS_WORK: "Needs work",
+  IMPROVING: "Improving",
+  STRONG: "Strong",
+};
+
 export function weakAreaStatusChipSx(status: WeakAreaStatus) {
   const color =
-    status === "Needs work"
-      ? "error.main"
-      : status === "Improving"
-        ? "warning.main"
-        : "success.main";
+    status === "NEEDS_WORK" ? "error.main" : status === "IMPROVING" ? "warning.main" : "success.main";
 
   return {
     color: "primary.contrastText",

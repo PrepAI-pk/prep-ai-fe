@@ -8,6 +8,7 @@ import { PracticeTopbar } from "../../../practice";
 import {
   CATEGORY_ROWS,
   CHANNEL_ROWS,
+  DIGEST_LABELS,
   DIGEST_OPTIONS,
 } from "../../notification-settings.constants";
 import { useNotificationSettingsPrefs } from "../../hooks/use-notification-settings-prefs.hook";
@@ -30,12 +31,16 @@ export function NotificationSettingsScreen(props: NotificationSettingsPageProps 
     prefs,
     toggleChannel,
     toggleCategory,
-    setReminder,
+    setReminderTime,
     toggleQuiet,
     setQuietFrom,
     setQuietTo,
     setDigest,
   } = useNotificationSettingsPrefs();
+
+  if (!prefs) {
+    return null;
+  }
 
   return (
     <Box sx={notificationSettingsStyles.appShell}>
@@ -55,7 +60,7 @@ export function NotificationSettingsScreen(props: NotificationSettingsPageProps 
               <Typography sx={notificationSettingsStyles.sectionTitleTight}>Delivery channels</Typography>
               <Typography sx={notificationSettingsStyles.sectionSub}>Where should PrepAI reach you?</Typography>
               {CHANNEL_ROWS.map((row) => {
-                const on = prefs.nsChannels[row.key];
+                const on = prefs.channels[row.key];
                 return (
                   <Box key={row.key} sx={notificationSettingsStyles.channelRow}>
                     <Box sx={notificationSettingsStyles.iconBadge}>
@@ -87,8 +92,8 @@ export function NotificationSettingsScreen(props: NotificationSettingsPageProps 
                 <Box
                   component="input"
                   type="time"
-                  value={prefs.nsReminder}
-                  onChange={(event: React.ChangeEvent<HTMLInputElement>) => setReminder(event.target.value)}
+                  value={prefs.reminder.time}
+                  onChange={(event: React.ChangeEvent<HTMLInputElement>) => setReminderTime(event.target.value)}
                   sx={timeInputSx}
                 />
               </Box>
@@ -98,18 +103,18 @@ export function NotificationSettingsScreen(props: NotificationSettingsPageProps 
                   <Typography sx={notificationSettingsStyles.rowTitle}>Quiet hours</Typography>
                   <Typography sx={notificationSettingsStyles.rowDesc}>Silence notifications overnight</Typography>
                 </Box>
-                <Box onClick={toggleQuiet} sx={toggleSx(prefs.nsQuiet)}>
-                  <Box sx={knobSx(prefs.nsQuiet)} />
+                <Box onClick={toggleQuiet} sx={toggleSx(prefs.quiet.enabled)}>
+                  <Box sx={knobSx(prefs.quiet.enabled)} />
                 </Box>
               </Box>
 
-              {prefs.nsQuiet && (
+              {prefs.quiet.enabled && (
                 <Box sx={notificationSettingsStyles.quietPanel}>
                   <Typography sx={notificationSettingsStyles.quietLabel}>From</Typography>
                   <Box
                     component="input"
                     type="time"
-                    value={prefs.nsQuietFrom}
+                    value={prefs.quiet.from}
                     onChange={(event: React.ChangeEvent<HTMLInputElement>) => setQuietFrom(event.target.value)}
                     sx={quietTimeInputSx}
                   />
@@ -117,7 +122,7 @@ export function NotificationSettingsScreen(props: NotificationSettingsPageProps 
                   <Box
                     component="input"
                     type="time"
-                    value={prefs.nsQuietTo}
+                    value={prefs.quiet.to}
                     onChange={(event: React.ChangeEvent<HTMLInputElement>) => setQuietTo(event.target.value)}
                     sx={quietTimeInputSx}
                   />
@@ -128,7 +133,7 @@ export function NotificationSettingsScreen(props: NotificationSettingsPageProps 
             <Paper variant="outlined" sx={notificationSettingsStyles.sectionCard}>
               <Typography sx={notificationSettingsStyles.sectionTitleSoftGap}>What to notify me about</Typography>
               {CATEGORY_ROWS.map((row) => {
-                const on = prefs.notif[row.key];
+                const on = prefs.categories[row.key];
                 return (
                   <Box key={row.key} sx={notificationSettingsStyles.row}>
                     <Typography sx={notificationSettingsStyles.categoryTitle}>{row.label}</Typography>
@@ -148,9 +153,9 @@ export function NotificationSettingsScreen(props: NotificationSettingsPageProps 
                     <Box
                       key={item}
                       onClick={() => setDigest(item)}
-                      sx={digestChipSx(prefs.nsDigest === item)}
+                      sx={digestChipSx(prefs.digestFreq === item)}
                     >
-                      {item}
+                      {DIGEST_LABELS[item]}
                     </Box>
                   ))}
                 </Box>

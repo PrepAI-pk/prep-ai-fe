@@ -7,10 +7,11 @@ import {
 } from "@mui/material";
 import type { AppScreen } from "../../../../app/screens";
 import { toApiErrorMessage } from "../../../../api/error";
+import { useListQuestionsQuery } from "../../../../api/questions/questions.endpoints";
+import { useGetSubjectsQuery } from "../../../../api/subjects/subjects.endpoints";
 import { useMockExams } from "../../../mockExams";
 import {
   PracticeTopbar,
-  usePracticeQuestions,
   usePracticeUi,
 } from "../../../practice";
 import {
@@ -21,7 +22,6 @@ import {
   SEARCH_TYPE_CHIPS,
   type SearchResult,
   type SearchType,
-  stripBodyTag,
 } from "../../global-search.constants";
 import {
   globalSearchStyles,
@@ -42,7 +42,8 @@ export function GlobalSearchPage(props: GlobalSearchPageProps = {}) {
   const [query, setQuery] = useState("");
   const [activeType, setActiveType] = useState<SearchType>("all");
 
-  const questionsQuery = usePracticeQuestions();
+  const questionsQuery = useListQuestionsQuery({ limit: 100 });
+  const subjectsQuery = useGetSubjectsQuery();
   const examsQuery = useMockExams();
   const practiceUi = usePracticeUi();
 
@@ -51,7 +52,7 @@ export function GlobalSearchPage(props: GlobalSearchPageProps = {}) {
   }, []);
 
   const allResults = useMemo<SearchResult[]>(() => {
-    const questions = questionsQuery.data ?? [];
+    const questions = questionsQuery.data?.items ?? [];
     const exams = examsQuery.data ?? [];
 
     const mcqResults: SearchResult[] = questions.map((question) => ({
@@ -59,11 +60,11 @@ export function GlobalSearchPage(props: GlobalSearchPageProps = {}) {
       type: "mcq",
       kind: "MCQ",
       title: question.questionText,
-      meta: `${stripBodyTag(question.subject)} · Practice topic · ${question.difficulty}`,
+      meta: `${question.subject.name} · Practice topic · ${question.difficulty}`,
       icon: "?",
       tone: "p",
       targetScreen: "mcqLibrary",
-      subject: stripBodyTag(question.subject),
+      subject: question.subject.name,
     }));
 
     const noteResults: SearchResult[] = NOTE_SEARCH_FIXTURES.map((note) => ({
@@ -82,31 +83,27 @@ export function GlobalSearchPage(props: GlobalSearchPageProps = {}) {
       id: `exam-${exam.id}`,
       type: "exams",
       kind: "Exam",
-      title: exam.title,
-      meta: `${exam.body} · ${exam.questionsCount} Q · ${exam.durationMinutes} min`,
+      title: exam.name,
+      meta: `${exam.body} · ${exam.questionCount} Q · ${exam.durationMins} min`,
       icon: "◷",
       tone: "g",
       targetScreen: "mockExams",
     }));
 
-    const uniqueSubjects = Array.from(
-      new Set(questions.map((question) => stripBodyTag(question.subject)).filter(Boolean)),
-    ).sort();
-
-    const subjectResults: SearchResult[] = uniqueSubjects.map((subject) => ({
-      id: `subject-${subject}`,
+    const subjectResults: SearchResult[] = (subjectsQuery.data ?? []).map((subject) => ({
+      id: `subject-${subject.id}`,
       type: "subjects",
       kind: "Subject",
-      title: subject,
+      title: subject.name,
       meta: "Practice available",
       icon: "◆",
       tone: "p",
       targetScreen: "practice",
-      subject,
+      subject: subject.name,
     }));
 
     return [...mcqResults, ...noteResults, ...examResults, ...subjectResults];
-  }, [examsQuery.data, questionsQuery.data]);
+  }, [examsQuery.data, questionsQuery.data, subjectsQuery.data]);
 
   const counts = useMemo(() => {
     const byType: Record<SearchType, number> = {

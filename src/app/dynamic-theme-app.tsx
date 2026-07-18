@@ -1,28 +1,40 @@
 import { CssBaseline, ThemeProvider } from "@mui/material";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { readUiPrefs, type UiPrefs } from "./settings-persistence.ts";
+import { useEffect, useMemo, type ReactNode } from "react";
+import { useGetPreferencesQuery } from "../api/me/me.endpoints";
+import { useAppSelector } from "../store/hooks";
+import { selectAuthStatus } from "../store/slices/auth-slice";
 import { buildPrepaiTheme } from "../theme/prepai-theme.ts";
+import { readUiPrefs, writeUiPrefs, type UiPrefs } from "./settings-persistence.ts";
 
 type DynamicThemeAppProps = {
   children: ReactNode;
 };
 
+function fromBackendPreferences(theme: string, accent: string): UiPrefs {
+  return {
+    theme: theme === "DARK" ? "dark" : "light",
+    accent: accent === "EMERALD" || accent === "PLUM" ? accent.toLowerCase() as UiPrefs["accent"] : "indigo",
+  };
+}
+
 export function DynamicThemeApp({ children }: DynamicThemeAppProps) {
-  const [prefs, setPrefs] = useState<UiPrefs>(() => readUiPrefs());
+  const status = useAppSelector(selectAuthStatus);
+  // Skipped until logged in — the route itself is protected, and pre-login
+  // screens (auth gate) just use whatever the paint-cache last knew.
+  const { data } = useGetPreferencesQuery(undefined, { skip: status !== "authenticated" });
+
+  const prefs = useMemo<UiPrefs>(() => {
+    if (data) {
+      return fromBackendPreferences(data.theme, data.accent);
+    }
+    return readUiPrefs();
+  }, [data]);
 
   useEffect(() => {
-    function syncPrefs(): void {
-      setPrefs(readUiPrefs());
+    if (data) {
+      writeUiPrefs(fromBackendPreferences(data.theme, data.accent));
     }
-
-    window.addEventListener("storage", syncPrefs);
-    window.addEventListener("prepai-ui-prefs-updated", syncPrefs as EventListener);
-
-    return () => {
-      window.removeEventListener("storage", syncPrefs);
-      window.removeEventListener("prepai-ui-prefs-updated", syncPrefs as EventListener);
-    };
-  }, []);
+  }, [data]);
 
   const theme = useMemo(() => buildPrepaiTheme(prefs), [prefs]);
 
