@@ -1,5 +1,4 @@
 import { ALL_ROLES, type Role } from "../auth/permissions";
-import type { DailyChallengeState } from "./slices/daily-challenge-slice";
 import type { PracticeUiState } from "./slices/practice-Ui-slice";
 import type { SessionState } from "./slices/session-slice";
 
@@ -7,7 +6,6 @@ const STORAGE_KEY = "prepai_frontend_store";
 
 export type PersistedState = {
   practiceUi: PracticeUiState;
-  dailyChallenge: DailyChallengeState;
   session: SessionState;
 };
 
@@ -18,7 +16,6 @@ function sanitizePersistedState(value: unknown): PersistedState | undefined {
 
   const candidate = value as {
     practiceUi?: unknown;
-    dailyChallenge?: unknown;
     session?: unknown;
   };
   const practiceUi = candidate.practiceUi;
@@ -33,35 +30,6 @@ function sanitizePersistedState(value: unknown): PersistedState | undefined {
     typeof ui.selectedSubject === "string" && ui.selectedSubject.length > 0
       ? ui.selectedSubject
       : "All";
-
-  // ---- dailyChallenge ----
-  const rawDc = candidate.dailyChallenge;
-  const dc = rawDc && typeof rawDc === "object" && !Array.isArray(rawDc)
-    ? (rawDc as Record<string, unknown>)
-    : {};
-
-  const dateKeyPattern = /^\d{4}-\d{2}-\d{2}$/;
-
-  const lastCompletedDateKey =
-    typeof dc.lastCompletedDateKey === "string" &&
-    dateKeyPattern.test(dc.lastCompletedDateKey)
-      ? dc.lastCompletedDateKey
-      : null;
-
-  const safeNonNegInt = (v: unknown): number =>
-    typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : 0;
-
-  const rawWh = dc.weekHistory;
-  const weekHistory: Record<string, boolean> =
-    rawWh && typeof rawWh === "object" && !Array.isArray(rawWh)
-      ? Object.fromEntries(
-          Object.entries(rawWh as Record<string, unknown>)
-            .filter(
-              ([k, v]) => dateKeyPattern.test(k) && typeof v === "boolean"
-            )
-            .map(([k, v]) => [k, v as boolean])
-        )
-      : {};
 
   // ---- session ----
   const rawSession = candidate.session;
@@ -102,15 +70,6 @@ function sanitizePersistedState(value: unknown): PersistedState | undefined {
   return {
     practiceUi: {
       selectedSubject,
-    },
-    dailyChallenge: {
-      lastCompletedDateKey,
-      streak: safeNonNegInt(dc.streak),
-      bestStreak: safeNonNegInt(dc.bestStreak),
-      totalXp: safeNonNegInt(dc.totalXp),
-      completionCount: safeNonNegInt(dc.completionCount),
-      perfectCount: safeNonNegInt(dc.perfectCount),
-      weekHistory,
     },
     session: {
       session: {

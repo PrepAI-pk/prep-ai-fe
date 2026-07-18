@@ -1,36 +1,24 @@
-import { DAY_LABELS } from "./daily-challenge.constants";
+import type { DailyChallengeWeekDay } from "../../api/daily-challenge/daily-challenge.types";
 import type { WeekDayStatus } from "./daily-challenge.types";
 
-export function getTodayKey(): string {
-  return new Date().toISOString().slice(0, 10);
+// `dateKey` is the server's `date` field ("YYYY-MM-DD", Asia/Karachi) —
+// parsed at noon UTC so no local-timezone shift can roll it onto the
+// adjacent calendar day.
+export function formatDateLabel(dateKey?: string): string {
+  const d = dateKey ? new Date(`${dateKey}T12:00:00Z`) : new Date();
+  const weekday = d.toLocaleDateString("en-US", { weekday: "long", timeZone: dateKey ? "UTC" : undefined }).toUpperCase();
+  const month = d.toLocaleDateString("en-US", { month: "long", timeZone: dateKey ? "UTC" : undefined }).toUpperCase();
+  const date = dateKey ? d.getUTCDate() : d.getDate();
+  const year = dateKey ? d.getUTCFullYear() : d.getFullYear();
+  return `${weekday} · ${date} ${month} ${year}`;
 }
 
-export function formatDateLabel(): string {
-  const d = new Date();
-  const weekday = d.toLocaleDateString("en-US", { weekday: "long" }).toUpperCase();
-  const month = d.toLocaleDateString("en-US", { month: "long" }).toUpperCase();
-  return `${weekday} · ${d.getDate()} ${month} ${d.getFullYear()}`;
-}
-
-export function getWeekDays(weekHistory: Record<string, boolean>): WeekDayStatus[] {
-  const today = new Date();
-  const todayKey = getTodayKey();
-  const daysFromMonday = (today.getDay() + 6) % 7;
-  const monday = new Date(today);
-  monday.setDate(today.getDate() - daysFromMonday);
-
-  return DAY_LABELS.map((label, index) => {
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + index);
-    const dateKey = d.toISOString().slice(0, 10);
-    const isToday = dateKey === todayKey;
-    const isLocked = dateKey > todayKey;
-    return {
-      dateKey,
-      label,
-      isToday,
-      isDone: Boolean(weekHistory[dateKey]),
-      isLocked,
-    };
-  });
+export function mapWeek(week: DailyChallengeWeekDay[]): WeekDayStatus[] {
+  return week.map((day, index) => ({
+    dateKey: `${day.d}-${index}`,
+    label: day.d,
+    isToday: Boolean(day.today),
+    isDone: Boolean(day.done),
+    isLocked: Boolean(day.locked),
+  }));
 }

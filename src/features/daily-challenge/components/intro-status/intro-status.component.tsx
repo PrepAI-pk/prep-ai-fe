@@ -10,16 +10,12 @@ import {
   weekDayLabelSx,
 } from "./intro-status.utils";
 import type { IntroStatusProps } from "./intro-status.types";
-import {
-  BADGE_DEFS,
-  BADGE_TOTAL_XP,
-} from "../../daily-challenge.constants";
 
 const IntroStatusComponent = (props: IntroStatusProps) => {
   const {
     dateLabel,
     isDoneToday,
-    challengeQuestions,
+    questionCount,
     potentialXp,
     dc,
     weekDays,
@@ -48,7 +44,7 @@ const IntroStatusComponent = (props: IntroStatusProps) => {
           Today's Challenge
         </Typography>
         <Typography sx={IntroStatusStyles.HeroSubtitle}>
-          {challengeQuestions.length} mixed questions across your exam subjects.
+          {questionCount} mixed questions across your exam subjects.
           Finish to earn up to <strong>{potentialXp} XP</strong> and protect
           your streak.
         </Typography>
@@ -108,10 +104,10 @@ const IntroStatusComponent = (props: IntroStatusProps) => {
           <Box sx={IntroStatusStyles.Grow}>
             <Box sx={IntroStatusStyles.LevelMetaRow}>
               <Typography sx={IntroStatusStyles.LevelMetaTitle}>
-                {levelName} · {BADGE_TOTAL_XP.toLocaleString()} XP
+                {levelName} · {dc.totalXp.toLocaleString()} XP
               </Typography>
               <Typography sx={IntroStatusStyles.LevelMetaSub}>
-                {earnedBadgeCount}/{BADGE_DEFS.length} badges
+                {earnedBadgeCount}/{badges.length} badges
               </Typography>
             </Box>
             <Box sx={IntroStatusStyles.LevelTrack}>

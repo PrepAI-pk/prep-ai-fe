@@ -1,3 +1,5 @@
+import type { LbPeriod, LbScope, LeaderboardPodiumEntry } from "../../api/leaderboard/leaderboard.types";
+
 export const LeaderboardScope = {
   National: "National",
   Provincial: "Provincial",
@@ -16,17 +18,6 @@ export const LeaderboardPeriod = {
 export type LeaderboardPeriod =
   (typeof LeaderboardPeriod)[keyof typeof LeaderboardPeriod];
 
-export type LeaderRow = {
-  rank: number;
-  name: string;
-  city: string;
-  streak: number;
-  points: number;
-  accuracy: number;
-  trend: "up" | "down";
-  isCurrentUser?: boolean;
-};
-
 export const LEADERBOARD_SCOPE_OPTIONS: LeaderboardScope[] = [
   LeaderboardScope.National,
   LeaderboardScope.Provincial,
@@ -39,22 +30,23 @@ export const LEADERBOARD_PERIOD_OPTIONS: LeaderboardPeriod[] = [
   LeaderboardPeriod.AllTime,
 ];
 
-export const LEADERBOARD_ROWS: LeaderRow[] = [
-  { rank: 1, name: "Areeba Khan", city: "Lahore", streak: 27, points: 2440, accuracy: 91, trend: "up" },
-  { rank: 2, name: "Hamza Qureshi", city: "Islamabad", streak: 21, points: 2350, accuracy: 89, trend: "up" },
-  { rank: 3, name: "Sana Malik", city: "Karachi", streak: 18, points: 2275, accuracy: 88, trend: "up" },
-  { rank: 4, name: "Ayesha Khan", city: "Peshawar", streak: 13, points: 2140, accuracy: 84, trend: "up", isCurrentUser: true },
-  { rank: 5, name: "Bilal Javed", city: "Rawalpindi", streak: 11, points: 2088, accuracy: 82, trend: "down" },
-  { rank: 6, name: "Noor Fatima", city: "Multan", streak: 9, points: 2012, accuracy: 80, trend: "up" },
-  { rank: 7, name: "Ali Raza", city: "Quetta", streak: 8, points: 1940, accuracy: 78, trend: "down" },
-];
+export const SCOPE_TO_API: Record<LeaderboardScope, LbScope> = {
+  [LeaderboardScope.National]: "NATIONAL",
+  [LeaderboardScope.Provincial]: "PROVINCIAL",
+  [LeaderboardScope.City]: "CITY",
+};
 
-export function podiumOrder(rows: LeaderRow[]): LeaderRow[] {
-  const topThree = rows.filter((row) => row.rank <= 3);
-  const first = topThree.find((row) => row.rank === 1);
-  const second = topThree.find((row) => row.rank === 2);
-  const third = topThree.find((row) => row.rank === 3);
-  return [second, first, third].filter((item): item is LeaderRow => !!item);
+export const PERIOD_TO_API: Record<LeaderboardPeriod, LbPeriod> = {
+  [LeaderboardPeriod.Weekly]: "WEEKLY",
+  [LeaderboardPeriod.Monthly]: "MONTHLY",
+  [LeaderboardPeriod.AllTime]: "ALL_TIME",
+};
+
+export function podiumOrder(podium: LeaderboardPodiumEntry[]): LeaderboardPodiumEntry[] {
+  const first = podium.find((row) => row.rank === 1);
+  const second = podium.find((row) => row.rank === 2);
+  const third = podium.find((row) => row.rank === 3);
+  return [second, first, third].filter((item): item is LeaderboardPodiumEntry => Boolean(item));
 }
 
 export function medalColor(rank: number): string {

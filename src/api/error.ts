@@ -63,6 +63,19 @@ function readMessageFromData(data: unknown): string | undefined {
   return undefined;
 }
 
+// True for a 403 PLAN_REQUIRED response (API.md §1) — lets a screen render a
+// paywall/upsell card instead of a generic error banner.
+export function isPlanRequiredError(error: unknown): boolean {
+  const fetchError = error as FetchBaseQueryError;
+  if (typeof fetchError !== "object" || fetchError === null || !("status" in fetchError)) {
+    return false;
+  }
+  if (fetchError.status !== 403) {
+    return false;
+  }
+  return isRecord(fetchError.data) && fetchError.data.code === "PLAN_REQUIRED";
+}
+
 export function toApiErrorMessage(error: unknown, fallback: string): string {
   if (!error) {
     return fallback;

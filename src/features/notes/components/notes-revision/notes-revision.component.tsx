@@ -1,16 +1,47 @@
 import { useMemo, useState } from "react";
-import { Box, Button, Chip, Divider, Paper, Typography } from "@mui/material";
+import { Alert, Box, Button, Chip, CircularProgress, Divider, Paper, Typography } from "@mui/material";
 import type { AppScreen } from "../../../../app/screens";
-import {
-  NOTES_FLASHCARDS,
-  NOTES_ITEMS,
-} from "../../notes.constants";
-import type { NoteBlock } from "../../notes.types";
+import { useGetNoteQuery, useListFlashcardsQuery, useListNotesQuery } from "../../../../api/notes/notes.endpoints";
+import type { NoteBlock } from "../../../../api/notes/notes.types";
+import { isPlanRequiredError, toApiErrorMessage } from "../../../../api/error";
 import { PracticeTopbar } from "../../../practice";
 
 type NotesRevisionPageProps = {
   onNavigateScreen?: (screen: AppScreen) => void;
 };
+
+function NotesLibraryPaywall({ onNavigateScreen }: NotesRevisionPageProps) {
+  return (
+    <Paper
+      variant="outlined"
+      sx={{
+        maxWidth: 520,
+        mx: "auto",
+        mt: 6,
+        p: "28px 26px",
+        borderRadius: "20px",
+        textAlign: "center",
+      }}
+    >
+      <Typography sx={{ fontFamily: '"Space Mono", monospace', fontSize: 11, letterSpacing: ".12em", textTransform: "uppercase", color: "secondary.main", fontWeight: 700 }}>
+        Pro feature
+      </Typography>
+      <Typography variant="h3" sx={{ fontSize: 22, mt: 1 }}>
+        Notes &amp; Revision is part of PrepAI Pro
+      </Typography>
+      <Typography sx={{ mt: 1, color: "text.secondary", fontSize: 14, lineHeight: 1.6 }}>
+        Upgrade to unlock the full AI-generated notes library, PDF export, and unlimited flashcard decks across every subject.
+      </Typography>
+      <Button
+        variant="contained"
+        sx={{ mt: 2.5, borderRadius: "11px", py: 1.2, px: 3 }}
+        onClick={() => onNavigateScreen?.("subscriptionPaywall")}
+      >
+        Compare plans
+      </Button>
+    </Paper>
+  );
+}
 
 export function NotesRevisionPage(props: NotesRevisionPageProps = {}) {
   const { onNavigateScreen } = props;
@@ -18,25 +49,28 @@ export function NotesRevisionPage(props: NotesRevisionPageProps = {}) {
   const [flashFlipped, setFlashFlipped] = useState(false);
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
 
-  const activeNote = useMemo(
-    () => NOTES_ITEMS.find((note) => note.id === activeNoteId) ?? null,
-    [activeNoteId],
-  );
+  const notesQuery = useListNotesQuery();
+  const flashcardsQuery = useListFlashcardsQuery();
+  const noteDetailQuery = useGetNoteQuery(activeNoteId ?? "", { skip: !activeNoteId });
+
+  const notes = useMemo(() => notesQuery.data?.items ?? [], [notesQuery.data]);
+  const flashcards = useMemo(() => flashcardsQuery.data?.items ?? [], [flashcardsQuery.data]);
+  const activeNote = noteDetailQuery.data ?? null;
+
+  const planRequired = isPlanRequiredError(notesQuery.error);
 
   function goPrevCard(): void {
-    setFlashIndex((previous) =>
-      previous === 0 ? NOTES_FLASHCARDS.length - 1 : previous - 1,
-    );
+    setFlashIndex((previous) => (previous === 0 ? flashcards.length - 1 : previous - 1));
     setFlashFlipped(false);
   }
 
   function goNextCard(): void {
-    setFlashIndex((previous) => (previous + 1) % NOTES_FLASHCARDS.length);
+    setFlashIndex((previous) => (previous + 1) % flashcards.length);
     setFlashFlipped(false);
   }
 
   function renderNoteBlock(block: NoteBlock, index: number) {
-    if (block.type === "heading") {
+    if (block.t === "h") {
       return (
         <Typography key={index} variant="h3" sx={{ fontSize: 21, mt: 2.2 }}>
           {block.text}
@@ -44,7 +78,7 @@ export function NotesRevisionPage(props: NotesRevisionPageProps = {}) {
       );
     }
 
-    if (block.type === "paragraph") {
+    if (block.t === "p") {
       return (
         <Typography key={index} sx={{ mt: 1.1, color: "text.secondary", lineHeight: 1.8 }}>
           {block.text}
@@ -52,7 +86,7 @@ export function NotesRevisionPage(props: NotesRevisionPageProps = {}) {
       );
     }
 
-    if (block.type === "keyPoint") {
+    if (block.t === "key") {
       return (
         <Paper
           key={index}
@@ -109,7 +143,15 @@ export function NotesRevisionPage(props: NotesRevisionPageProps = {}) {
 
         <Box sx={{ flex: 1, overflow: "auto", px: { xs: 2, md: 3.75 }, pt: { xs: 2.5, md: 3.75 }, pb: { xs: 5, md: 7.5 } }}>
 
-        {!activeNote && (
+        {planRequired && <NotesLibraryPaywall onNavigateScreen={onNavigateScreen} />}
+
+        {!planRequired && notesQuery.isError && (
+          <Alert severity="error" sx={{ maxWidth: 640, mx: "auto", borderRadius: 2 }}>
+            Could not load notes. {toApiErrorMessage(notesQuery.error, "Please try again.")}
+          </Alert>
+        )}
+
+        {!planRequired && !notesQuery.isError && !activeNote && (
           <Box
             sx={{
               maxWidth: 1080,
@@ -131,96 +173,104 @@ export function NotesRevisionPage(props: NotesRevisionPageProps = {}) {
                 Flashcards · quick revision
               </Typography>
 
-              <Box
-                onClick={() => setFlashFlipped((value) => !value)}
-                sx={{
-                  position: "relative",
-                  height: 280,
-                  perspective: "1400px",
-                  cursor: "pointer",
-                }}
-              >
-                <Box
-                  sx={{
-                    position: "relative",
-                    inset: 0,
-                    height: "100%",
-                    transformStyle: "preserve-3d",
-                    transition: "transform .5s ease",
-                    transform: flashFlipped ? "rotateY(180deg)" : "rotateY(0deg)",
-                  }}
-                >
-                  <Paper
-                    variant="outlined"
+              {flashcards.length === 0 ? (
+                <Alert severity="info" sx={{ borderRadius: 2 }}>
+                  {flashcardsQuery.isLoading ? "Loading flashcards…" : "No flashcards yet."}
+                </Alert>
+              ) : (
+                <>
+                  <Box
+                    onClick={() => setFlashFlipped((value) => !value)}
                     sx={{
-                      position: "absolute",
-                      inset: 0,
-                      backfaceVisibility: "hidden",
-                      borderRadius: "20px",
-                      borderColor: "divider",
-                      p: "28px",
-                      display: "flex",
-                      flexDirection: "column",
-                      boxShadow: "0 4px 20px -8px rgba(24,24,32,.14)",
+                      position: "relative",
+                      height: 280,
+                      perspective: "1400px",
+                      cursor: "pointer",
                     }}
                   >
-                    <Typography
+                    <Box
                       sx={{
-                        fontFamily: '"Space Mono", monospace',
-                        fontSize: 11,
-                        letterSpacing: ".12em",
-                        textTransform: "uppercase",
-                        color: "secondary.main",
-                        fontWeight: 700,
+                        position: "relative",
+                        inset: 0,
+                        height: "100%",
+                        transformStyle: "preserve-3d",
+                        transition: "transform .5s ease",
+                        transform: flashFlipped ? "rotateY(180deg)" : "rotateY(0deg)",
                       }}
                     >
-                        {NOTES_FLASHCARDS[flashIndex].subject}
-                    </Typography>
-                    <Box sx={{ flex: 1, display: "flex", alignItems: "center" }}>
-                      <Typography sx={{ fontFamily: '"Source Serif 4", serif', fontSize: 22, fontWeight: 600, lineHeight: 1.4 }}>
-                          {NOTES_FLASHCARDS[flashIndex].front}
-                      </Typography>
-                    </Box>
-                    <Typography sx={{ fontSize: 12.5, color: "text.disabled" }}>Tap to reveal answer</Typography>
-                  </Paper>
+                      <Paper
+                        variant="outlined"
+                        sx={{
+                          position: "absolute",
+                          inset: 0,
+                          backfaceVisibility: "hidden",
+                          borderRadius: "20px",
+                          borderColor: "divider",
+                          p: "28px",
+                          display: "flex",
+                          flexDirection: "column",
+                          boxShadow: "0 4px 20px -8px rgba(24,24,32,.14)",
+                        }}
+                      >
+                        <Typography
+                          sx={{
+                            fontFamily: '"Space Mono", monospace',
+                            fontSize: 11,
+                            letterSpacing: ".12em",
+                            textTransform: "uppercase",
+                            color: "secondary.main",
+                            fontWeight: 700,
+                          }}
+                        >
+                            {flashcards[flashIndex].subject.name}
+                        </Typography>
+                        <Box sx={{ flex: 1, display: "flex", alignItems: "center" }}>
+                          <Typography sx={{ fontFamily: '"Source Serif 4", serif', fontSize: 22, fontWeight: 600, lineHeight: 1.4 }}>
+                              {flashcards[flashIndex].front}
+                          </Typography>
+                        </Box>
+                        <Typography sx={{ fontSize: 12.5, color: "text.disabled" }}>Tap to reveal answer</Typography>
+                      </Paper>
 
-                  <Box
-                    sx={{
-                      position: "absolute",
-                      inset: 0,
-                      backfaceVisibility: "hidden",
-                      transform: "rotateY(180deg)",
-                      borderRadius: "20px",
-                      p: "28px",
-                      display: "flex",
-                      flexDirection: "column",
-                      backgroundColor: "primary.main",
-                      color: "primary.contrastText",
-                      boxShadow: "0 4px 20px -8px rgba(24,24,32,.14)",
-                    }}
-                  >
-                    <Typography sx={{ fontFamily: '"Space Mono", monospace', fontSize: 11, letterSpacing: ".12em", textTransform: "uppercase", opacity: 0.8 }}>
-                      Answer
-                    </Typography>
-                    <Box sx={{ flex: 1, display: "flex", alignItems: "center" }}>
-                      <Typography sx={{ fontSize: 16, lineHeight: 1.55 }}>{NOTES_FLASHCARDS[flashIndex].back}</Typography>
+                      <Box
+                        sx={{
+                          position: "absolute",
+                          inset: 0,
+                          backfaceVisibility: "hidden",
+                          transform: "rotateY(180deg)",
+                          borderRadius: "20px",
+                          p: "28px",
+                          display: "flex",
+                          flexDirection: "column",
+                          backgroundColor: "primary.main",
+                          color: "primary.contrastText",
+                          boxShadow: "0 4px 20px -8px rgba(24,24,32,.14)",
+                        }}
+                      >
+                        <Typography sx={{ fontFamily: '"Space Mono", monospace', fontSize: 11, letterSpacing: ".12em", textTransform: "uppercase", opacity: 0.8 }}>
+                          Answer
+                        </Typography>
+                        <Box sx={{ flex: 1, display: "flex", alignItems: "center" }}>
+                          <Typography sx={{ fontSize: 16, lineHeight: 1.55 }}>{flashcards[flashIndex].back}</Typography>
+                        </Box>
+                        <Typography sx={{ fontSize: 12.5, opacity: 0.82 }}>Tap to flip back</Typography>
+                      </Box>
                     </Box>
-                    <Typography sx={{ fontSize: 12.5, opacity: 0.82 }}>Tap to flip back</Typography>
                   </Box>
-                </Box>
-              </Box>
 
-              <Box sx={{ mt: 2, display: "flex", alignItems: "center", gap: 1.5 }}>
-                <Button variant="outlined" onClick={goPrevCard} sx={{ minWidth: 42, width: 42, height: 42, borderRadius: "12px", px: 0 }}>
-                  ←
-                </Button>
-                <Typography sx={{ flex: 1, textAlign: "center", color: "text.secondary", fontFamily: '"Space Mono", monospace', fontSize: 13 }}>
-                  {flashIndex + 1} / {NOTES_FLASHCARDS.length}
-                </Typography>
-                <Button variant="outlined" onClick={goNextCard} sx={{ minWidth: 42, width: 42, height: 42, borderRadius: "12px", px: 0 }}>
-                  →
-                </Button>
-              </Box>
+                  <Box sx={{ mt: 2, display: "flex", alignItems: "center", gap: 1.5 }}>
+                    <Button variant="outlined" onClick={goPrevCard} sx={{ minWidth: 42, width: 42, height: 42, borderRadius: "12px", px: 0 }}>
+                      ←
+                    </Button>
+                    <Typography sx={{ flex: 1, textAlign: "center", color: "text.secondary", fontFamily: '"Space Mono", monospace', fontSize: 13 }}>
+                      {flashIndex + 1} / {flashcards.length}
+                    </Typography>
+                    <Button variant="outlined" onClick={goNextCard} sx={{ minWidth: 42, width: 42, height: 42, borderRadius: "12px", px: 0 }}>
+                      →
+                    </Button>
+                  </Box>
+                </>
+              )}
             </Box>
 
             <Box>
@@ -235,8 +285,18 @@ export function NotesRevisionPage(props: NotesRevisionPageProps = {}) {
                 AI-generated notes
               </Typography>
 
+              {notesQuery.isLoading && (
+                <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+                  <CircularProgress size={28} />
+                </Box>
+              )}
+
+              {!notesQuery.isLoading && notes.length === 0 && (
+                <Alert severity="info" sx={{ borderRadius: 2 }}>No notes published yet.</Alert>
+              )}
+
               <Box sx={{ display: "grid", gap: 1.5 }}>
-                {NOTES_ITEMS.map((note) => (
+                {notes.map((note) => (
                   <Paper
                     key={note.id}
                     variant="outlined"
@@ -255,7 +315,7 @@ export function NotesRevisionPage(props: NotesRevisionPageProps = {}) {
                   >
                     <Box sx={{ display: "flex", alignItems: "center", gap: 0.8, mb: 0.8 }}>
                       <Chip
-                        label={note.subject}
+                        label={note.subject.name}
                         size="small"
                         sx={{
                           borderRadius: 2,
@@ -266,7 +326,7 @@ export function NotesRevisionPage(props: NotesRevisionPageProps = {}) {
                         }}
                       />
                       <Typography sx={{ color: "text.secondary", fontSize: 12 }}>
-                        {note.readMinutes} min read
+                        {note.mins} min read
                       </Typography>
                     </Box>
 
@@ -286,7 +346,7 @@ export function NotesRevisionPage(props: NotesRevisionPageProps = {}) {
           </Box>
         )}
 
-        {activeNote && (
+        {!planRequired && activeNote && (
           <Box sx={{ maxWidth: 980, mx: "auto" }}>
             <Typography
               component="button"
@@ -313,7 +373,7 @@ export function NotesRevisionPage(props: NotesRevisionPageProps = {}) {
               <Paper variant="outlined" sx={{ p: 2.4, borderRadius: 2.4, borderColor: "divider" }}>
                 <Box sx={{ display: "flex", alignItems: "center", gap: 0.8, mb: 0.8 }}>
                   <Chip
-                    label={activeNote.subject}
+                    label={activeNote.subject.name}
                     size="small"
                     sx={{
                       borderRadius: 2,
@@ -324,7 +384,7 @@ export function NotesRevisionPage(props: NotesRevisionPageProps = {}) {
                     }}
                   />
                   <Typography sx={{ color: "text.secondary", fontSize: 12 }}>
-                    {activeNote.readMinutes} min read · AI-generated
+                    {activeNote.mins} min read · {activeNote.aiGenerated ? "AI-generated" : "Curated"}
                   </Typography>
                 </Box>
 
@@ -334,7 +394,7 @@ export function NotesRevisionPage(props: NotesRevisionPageProps = {}) {
                 <Divider sx={{ my: 1.8 }} />
 
                 <Box sx={{ maxWidth: 680 }}>
-                  {activeNote.blocks.map((block, index) => renderNoteBlock(block, index))}
+                  {activeNote.body.map((block, index) => renderNoteBlock(block, index))}
                 </Box>
               </Paper>
 
@@ -354,26 +414,18 @@ export function NotesRevisionPage(props: NotesRevisionPageProps = {}) {
                     Contents
                   </Typography>
                   <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
-                    {activeNote.blocks
-                      .filter((block): block is Extract<NoteBlock, { type: "heading" }> => block.type === "heading")
-                      .map((heading) => (
-                        <Box key={heading.text} sx={{ display: "flex", gap: 1.1 }}>
-                          <Box sx={{ width: 5, height: 5, borderRadius: "50%", backgroundColor: "secondary.main", mt: 0.8, flex: "none" }} />
-                          <Typography sx={{ fontSize: 13, color: "text.secondary", lineHeight: 1.45 }}>{heading.text}</Typography>
-                        </Box>
-                      ))}
+                    {activeNote.contents.map((heading) => (
+                      <Box key={heading.id} sx={{ display: "flex", gap: 1.1 }}>
+                        <Box sx={{ width: 5, height: 5, borderRadius: "50%", backgroundColor: "secondary.main", mt: 0.8, flex: "none" }} />
+                        <Typography sx={{ fontSize: 13, color: "text.secondary", lineHeight: 1.45 }}>{heading.text}</Typography>
+                      </Box>
+                    ))}
                   </Box>
                 </Paper>
 
                 <Box sx={{ display: "grid", gap: 1.1 }}>
                   <Button variant="contained" onClick={() => onNavigateScreen?.("aiTutor")} sx={{ py: 1.35, borderRadius: "11px", fontSize: 13.5 }}>
                     Ask AI about this note
-                  </Button>
-                  <Button variant="outlined" sx={{ py: 1.35, borderRadius: "11px", fontSize: 13.5 }}>
-                    Download PDF
-                  </Button>
-                  <Button variant="outlined" sx={{ py: 1.35, borderRadius: "11px", fontSize: 13.5 }}>
-                    ☆ Bookmark
                   </Button>
                 </Box>
               </Box>

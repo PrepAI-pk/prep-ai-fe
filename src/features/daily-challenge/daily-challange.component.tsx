@@ -1,10 +1,7 @@
 import { Box } from "@mui/material";
 import type { AppScreen } from "../../app/screens";
 import { PracticeTopbar } from "../practice";
-import {
-  ChallengeState,
-  challengeQuestions,
-} from "./daily-challenge.constants";
+import { ChallengeState } from "./daily-challenge.constants";
 import { useDailyChallengeSession } from "./hooks/use-daily-challenge-session.hook";
 import { dailyChallengeStyles } from "./daily-challenge.styles";
 import BadgeUnlockOverlay from "./components/badge-unlock-overlay/badge-unlock-overlay.component";
@@ -30,6 +27,7 @@ export function DailyChallengeScreen(props: DailyChallengePageProps = {}) {
     unlockOverlayOpen,
     unlockedBadge,
     current,
+    totalQuestions,
     progress,
     resultTitle,
     resultSub,
@@ -44,6 +42,7 @@ export function DailyChallengeScreen(props: DailyChallengePageProps = {}) {
     earnedBadgeCount,
     badges,
     potentialXp,
+    questionCount,
     startChallenge,
     handleSelect,
     handleNext,
@@ -70,7 +69,7 @@ export function DailyChallengeScreen(props: DailyChallengePageProps = {}) {
               <IntroStatusComponent
                 dateLabel={dateLabel}
                 isDoneToday={isDoneToday}
-                challengeQuestions={challengeQuestions}
+                questionCount={questionCount}
                 potentialXp={potentialXp}
                 dc={dc}
                 weekDays={weekDays}
@@ -90,7 +89,7 @@ export function DailyChallengeScreen(props: DailyChallengePageProps = {}) {
                 progress={progress}
                 current={current}
                 questionIndex={questionIndex}
-                challengeQuestions={challengeQuestions}
+                totalQuestions={totalQuestions}
                 selectedOption={selectedOption}
                 revealed={revealed}
                 handleSelect={handleSelect}
@@ -106,7 +105,7 @@ export function DailyChallengeScreen(props: DailyChallengePageProps = {}) {
                 earnedXp={earnedXp}
                 dc={dc}
                 score={score}
-                challengeQuestions={challengeQuestions}
+                totalQuestions={totalQuestions}
                 onNavigateScreen={onNavigateScreen}
               />
             )}

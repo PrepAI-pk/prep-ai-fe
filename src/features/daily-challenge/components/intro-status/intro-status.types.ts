@@ -1,5 +1,3 @@
-import type { ChallengeQuestion } from "../../daily-challenge.constants";
-
 export interface IWeekDayStatus {
   dateKey: string;
   label: string;
@@ -28,7 +26,7 @@ export interface IDc {
 export interface IntroStatusProps {
   dateLabel: string;
   isDoneToday: boolean;
-  challengeQuestions: ChallengeQuestion[];
+  questionCount: number;
   potentialXp: number;
   dc: IDc;
   weekDays: IWeekDayStatus[];

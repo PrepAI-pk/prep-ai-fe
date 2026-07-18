@@ -1,5 +1,4 @@
 import type { AppScreen } from "../../../../app/screens";
-import type { ChallengeQuestion } from "../../daily-challenge.constants";
 
 export interface DoneStatusProps {
   resultTitle: string;
@@ -7,6 +6,6 @@ export interface DoneStatusProps {
   earnedXp: number;
   dc: { streak: number };
   score: number;
-  challengeQuestions: ChallengeQuestion[];
+  totalQuestions: number;
   onNavigateScreen?: (screen: AppScreen) => void;
 }

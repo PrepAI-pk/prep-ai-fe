@@ -1,9 +1,9 @@
 export interface IQuestion {
-  id: number;
+  id: string;
   question: string;
   options: string[];
-  correctIndex: number;
-  explanation: string;
+  correctIndex: number | null;
+  explanation: string | null;
   subject: string;
   difficulty: string;
 }
@@ -12,7 +12,7 @@ export interface PlayStatusProps {
   progress: number;
   current: IQuestion;
   questionIndex: number;
-  challengeQuestions: IQuestion[];
+  totalQuestions: number;
   selectedOption: number | null;
   revealed: boolean;
   handleSelect: (index: number) => void;

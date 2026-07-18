@@ -11,12 +11,14 @@ import {
   Typography,
 } from "@mui/material";
 import type { AppScreen } from "../../../../app/screens";
+import { useGetLeaderboardQuery } from "../../../../api/leaderboard/leaderboard.endpoints";
 import {
   LEADERBOARD_PERIOD_OPTIONS,
-  LEADERBOARD_ROWS,
   LEADERBOARD_SCOPE_OPTIONS,
   LeaderboardPeriod,
   LeaderboardScope,
+  PERIOD_TO_API,
+  SCOPE_TO_API,
   medalColor,
   podiumHeight,
   podiumOrder,
@@ -34,17 +36,22 @@ type LeaderboardPageProps = {
   onNavigateScreen?: (screen: AppScreen) => void;
 };
 
+function trendFor(delta: number): "up" | "down" | "flat" {
+  if (delta > 0) return "up";
+  if (delta < 0) return "down";
+  return "flat";
+}
+
 export function LeaderboardPage(props: LeaderboardPageProps = {}) {
   const { onNavigateScreen } = props;
   const [scope, setScope] = useState<LeaderboardScope>(LeaderboardScope.National);
   const [period, setPeriod] = useState<LeaderboardPeriod>(LeaderboardPeriod.Weekly);
 
-  const rows = useMemo(() => LEADERBOARD_ROWS, []);
-  const podium = useMemo(() => podiumOrder(rows), [rows]);
-  const currentUser = useMemo(
-    () => rows.find((row) => row.isCurrentUser) ?? rows[0],
-    [rows],
-  );
+  const { data } = useGetLeaderboardQuery({ scope: SCOPE_TO_API[scope], period: PERIOD_TO_API[period] });
+
+  const rows = data?.items ?? [];
+  const podium = useMemo(() => podiumOrder(data?.podium ?? []), [data?.podium]);
+  const you = data?.you ?? null;
 
   return (
     <Box sx={leaderboardStyles.shell}>
@@ -83,48 +90,54 @@ export function LeaderboardPage(props: LeaderboardPageProps = {}) {
             </Box>
           </Box>
 
-          <Paper variant="outlined" sx={leaderboardStyles.podiumCard}>
-            <Typography sx={{ fontWeight: 700, mb: 1.2 }}>Top performers</Typography>
-            <Box sx={leaderboardStyles.podiumGrid}>
-              {podium.map((entry) => {
-                const height = podiumHeight(entry.rank);
-                const medal = medalColor(entry.rank);
+          {podium.length > 0 && (
+            <Paper variant="outlined" sx={leaderboardStyles.podiumCard}>
+              <Typography sx={{ fontWeight: 700, mb: 1.2 }}>Top performers</Typography>
+              <Box sx={leaderboardStyles.podiumGrid}>
+                {podium.map((entry) => {
+                  const height = podiumHeight(entry.rank);
+                  const medal = medalColor(entry.rank);
 
-                return (
-                  <Box key={entry.rank} sx={{ textAlign: "center" }}>
-                    <Typography sx={{ fontSize: 12, color: "text.secondary", mb: 0.4 }}>{entry.city}</Typography>
-                    <Typography variant="h3" sx={{ fontSize: 18 }}>{entry.name}</Typography>
-                    <Box sx={podiumPillarSx(height)}>
-                      <Box sx={{ ...leaderboardStyles.rankBadge, bgcolor: medal }}>
-                        {entry.rank}
+                  return (
+                    <Box key={entry.rank} sx={{ textAlign: "center" }}>
+                      <Typography sx={{ fontSize: 12, color: "text.secondary", mb: 0.4 }}>
+                        {entry.city ?? "—"}
+                      </Typography>
+                      <Typography variant="h3" sx={{ fontSize: 18 }}>{entry.name}</Typography>
+                      <Box sx={podiumPillarSx(height)}>
+                        <Box sx={{ ...leaderboardStyles.rankBadge, bgcolor: medal }}>
+                          {entry.rank}
+                        </Box>
+                        <Typography sx={{ fontSize: 12, color: "text.secondary" }}>{entry.pts} pts</Typography>
                       </Box>
-                      <Typography sx={{ fontSize: 12, color: "text.secondary" }}>{entry.points} pts</Typography>
                     </Box>
-                  </Box>
-                );
-              })}
-            </Box>
-          </Paper>
+                  );
+                })}
+              </Box>
+            </Paper>
+          )}
 
-          <Paper sx={leaderboardStyles.yourRankCard}>
-            <Typography
-              sx={{
-                fontFamily: '"Space Mono", monospace',
-                letterSpacing: ".12em",
-                textTransform: "uppercase",
-                fontSize: 11,
-                opacity: 0.9,
-              }}
-            >
-              Your rank
-            </Typography>
-            <Box sx={leaderboardStyles.metricRow}>
-              <Metric label="Rank" value={`#${currentUser.rank}`} />
-              <Metric label="Points" value={`${currentUser.points}`} />
-              <Metric label="Accuracy" value={`${currentUser.accuracy}%`} />
-              <Metric label="Streak" value={`${currentUser.streak}d`} />
-            </Box>
-          </Paper>
+          {you && (
+            <Paper sx={leaderboardStyles.yourRankCard}>
+              <Typography
+                sx={{
+                  fontFamily: '"Space Mono", monospace',
+                  letterSpacing: ".12em",
+                  textTransform: "uppercase",
+                  fontSize: 11,
+                  opacity: 0.9,
+                }}
+              >
+                Your rank
+              </Typography>
+              <Box sx={leaderboardStyles.metricRow}>
+                <Metric label="Rank" value={`#${you.rank}`} />
+                <Metric label="Points" value={`${you.pts}`} />
+                <Metric label="Accuracy" value={`${you.acc}%`} />
+                <Metric label="Streak" value={`${you.streak}d`} />
+              </Box>
+            </Paper>
+          )}
 
           <Paper variant="outlined" sx={{ borderRadius: "16px", borderColor: "divider", overflow: "hidden" }}>
             <Table size="small">
@@ -138,22 +151,31 @@ export function LeaderboardPage(props: LeaderboardPageProps = {}) {
                 </TableRow>
               </TableHead>
               <TableBody>
+                {rows.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5}>
+                      <Typography sx={{ fontSize: 13, color: "text.secondary", textAlign: "center", py: 2 }}>
+                        No rankings yet for this scope.
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                )}
                 {rows.map((row) => (
                   <TableRow
                     key={row.rank}
-                    sx={{ bgcolor: row.isCurrentUser ? "primary.light" : "transparent" }}
+                    sx={{ bgcolor: row.you ? "primary.light" : "transparent" }}
                   >
                     <TableCell>#{row.rank}</TableCell>
                     <TableCell>
                       <Typography sx={{ fontSize: 13, fontWeight: 600 }}>{row.name}</Typography>
                       <Typography sx={{ fontSize: 12, color: "text.secondary" }}>
-                        {row.city} · {row.streak}d streak
+                        {row.city ?? "—"} · {row.streak}d streak
                       </Typography>
                     </TableCell>
-                    <TableCell>{row.points}</TableCell>
-                    <TableCell>{row.accuracy}%</TableCell>
-                    <TableCell sx={trendSx(row.trend)}>
-                      {row.trend === "up" ? "▲" : "▼"}
+                    <TableCell>{row.pts}</TableCell>
+                    <TableCell>{row.acc}%</TableCell>
+                    <TableCell sx={trendSx(trendFor(row.delta))}>
+                      {row.delta > 0 ? "▲" : row.delta < 0 ? "▼" : "—"}
                     </TableCell>
                   </TableRow>
                 ))}

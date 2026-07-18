@@ -68,6 +68,19 @@ const baseQueryWithReauth: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQue
 export const prepaiApi = createApi({
   reducerPath: "prepaiApi",
   baseQuery: baseQueryWithReauth,
-  tagTypes: ["LibraryQuestion", "Bookmark", "MockExam", "Me", "Subject", "Subscription", "Invoice"],
+  tagTypes: [
+    "LibraryQuestion",
+    "Bookmark",
+    "MockExam",
+    "Me",
+    "Subject",
+    "Subscription",
+    "Invoice",
+    "StudyPlan",
+    "DailyChallenge",
+    "Badge",
+    "Leaderboard",
+    "XpHistory",
+  ],
   endpoints: () => ({}),
 });

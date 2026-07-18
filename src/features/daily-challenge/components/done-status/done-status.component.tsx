@@ -8,7 +8,7 @@ const DoneStatusComponent = ({
   earnedXp,
   dc,
   score,
-  challengeQuestions,
+  totalQuestions,
   onNavigateScreen,
 }: DoneStatusProps) => {
   return (
@@ -38,7 +38,7 @@ const DoneStatusComponent = ({
         </Box>
         <Box sx={DoneStatusStyles.DoneStatNeutral}>
           <Typography sx={DoneStatusStyles.DoneStatValuePrimary}>
-            {score}/{challengeQuestions.length}
+            {score}/{totalQuestions}
           </Typography>
           <Typography sx={DoneStatusStyles.DoneStatLabel}>Correct</Typography>
         </Box>

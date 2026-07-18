@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toApiErrorMessage } from "./error";
+import { isPlanRequiredError, toApiErrorMessage } from "./error";
 
 describe("toApiErrorMessage", () => {
   it("returns backend message from structured payload", () => {
@@ -69,5 +69,25 @@ describe("toApiErrorMessage", () => {
 
     expect(message).toContain("Invalid email address");
     expect(message).toContain("Too small: expected string to have >=8 characters");
+  });
+});
+
+describe("isPlanRequiredError", () => {
+  it("is true for a 403 PLAN_REQUIRED envelope", () => {
+    expect(
+      isPlanRequiredError({
+        status: 403,
+        data: { code: "PLAN_REQUIRED", message: "This feature requires a higher plan." },
+      }),
+    ).toBe(true);
+  });
+
+  it("is false for a 403 with a different code", () => {
+    expect(isPlanRequiredError({ status: 403, data: { code: "FORBIDDEN" } })).toBe(false);
+  });
+
+  it("is false for a non-403 error and for unknown values", () => {
+    expect(isPlanRequiredError({ status: 404, data: { code: "PLAN_REQUIRED" } })).toBe(false);
+    expect(isPlanRequiredError(undefined)).toBe(false);
   });
 });

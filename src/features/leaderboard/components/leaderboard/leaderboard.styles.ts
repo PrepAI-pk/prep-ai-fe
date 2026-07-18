@@ -63,7 +63,7 @@ export const podiumPillarSx = (height: number) => ({
   placeItems: "center",
 });
 
-export const trendSx = (trend: "up" | "down") => ({
-  color: trend === "up" ? "success.main" : "error.main",
+export const trendSx = (trend: "up" | "down" | "flat") => ({
+  color: trend === "up" ? "success.main" : trend === "down" ? "error.main" : "text.disabled",
   fontWeight: 700,
 });

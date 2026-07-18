@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
+import { useGetDailyChallengeQuery } from "../../api/daily-challenge/daily-challenge.endpoints";
 import { useGetNotificationPreferencesQuery } from "../../api/me/me.endpoints";
-import { isDailyChallengeDoneToday } from "../../app/daily-challenge-persistence";
 import { SCREEN_TO_PATH } from "../../routes/route-paths";
 
 export function useDailyReminderToast(): {
@@ -15,7 +15,8 @@ export function useDailyReminderToast(): {
 
   const { data: reminderPrefs } = useGetNotificationPreferencesQuery();
   const reminderEnabled = Boolean(reminderPrefs?.reminder.enabled);
-  const dailyDone = isDailyChallengeDoneToday();
+  const { data: dailyChallenge } = useGetDailyChallengeQuery();
+  const dailyDone = dailyChallenge?.completed ?? false;
 
   const eligible =
     !isAdminSection &&
