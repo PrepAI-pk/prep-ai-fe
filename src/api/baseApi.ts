@@ -81,6 +81,7 @@ export const prepaiApi = createApi({
     "Badge",
     "Leaderboard",
     "XpHistory",
+    "VideoLessons",
   ],
   endpoints: () => ({}),
 });
