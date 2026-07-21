@@ -2,7 +2,6 @@ import {
   Alert,
   Box,
   Button,
-  Chip,
   Paper,
   Switch,
   TextField,
@@ -19,13 +18,8 @@ import {
 import { toApiErrorMessage } from "../../../../api/error";
 import type { AppScreen } from "../../../../app/screens";
 import { PracticeTopbar } from "../../../practice";
-import { ALL_ROLES, type Role } from "../../../../auth";
-import { useAppDispatch, useAppSelector } from "../../../../store/hooks";
+import { useAppDispatch } from "../../../../store/hooks";
 import { authEnded } from "../../../../store/slices/auth-slice";
-import {
-  selectRoles,
-  setActiveRoles,
-} from "../../../../store/slices/session-slice";
 import {
   ACCENT_SWATCHES,
   CONTENT_LANGUAGES,
@@ -86,7 +80,6 @@ export function SettingsProfileScreen(props: SettingsProfilePageProps = {}) {
   } = useSettingsPreferences();
 
   const dispatch = useAppDispatch();
-  const activeRoles = useAppSelector(selectRoles);
 
   const [passwordFormOpen, setPasswordFormOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
@@ -110,19 +103,6 @@ export function SettingsProfileScreen(props: SettingsProfilePageProps = {}) {
     } catch (error) {
       setSubscriptionMessage({ severity: "error", text: toApiErrorMessage(error, "Couldn't cancel your plan.") });
     }
-  }
-
-  function toggleRole(role: Role): void {
-    if (role === "student") {
-      dispatch(setActiveRoles(["student"]));
-      return;
-    }
-
-    const nextRoles = activeRoles.includes(role)
-      ? activeRoles.filter((candidate) => candidate !== role)
-      : [...activeRoles.filter((candidate) => candidate !== "student"), role];
-
-    dispatch(setActiveRoles(nextRoles));
   }
 
   async function handleChangePassword(): Promise<void> {
@@ -200,27 +180,6 @@ export function SettingsProfileScreen(props: SettingsProfilePageProps = {}) {
               </Box>
               <Box sx={settingsProfileStyles.profilePlanChip}>
                 {planLabel} plan
-              </Box>
-            </Paper>
-
-            <Paper variant="outlined" sx={{ p: "16px 18px", borderRadius: "16px", mb: 2 }}>
-              <Typography sx={{ fontWeight: 700, fontSize: 13 }}>
-                Demo role (dev only)
-              </Typography>
-              <Typography sx={{ color: "text.secondary", fontSize: 12, mt: 0.3, mb: 1.2 }}>
-                Stand-in for admin permission gating until the Admin module exists server-side.
-                Toggle roles to see how the Admin Portal nav and routes react to permissions.
-              </Typography>
-              <Box sx={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                {ALL_ROLES.map((role) => (
-                  <Chip
-                    key={role}
-                    label={role}
-                    onClick={() => toggleRole(role)}
-                    color={activeRoles.includes(role) ? "primary" : "default"}
-                    variant={activeRoles.includes(role) ? "filled" : "outlined"}
-                  />
-                ))}
               </Box>
             </Paper>
 

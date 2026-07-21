@@ -5,9 +5,27 @@ import {
   type FetchArgs,
   type FetchBaseQueryError,
 } from "@reduxjs/toolkit/query/react";
+import { navigateGlobally } from "../app/navigate";
 import { API_BASE_URL } from "../config/api";
 import { accessTokenRefreshed, authEnded, selectAccessToken } from "../store/slices/auth-slice";
 import type { RootState } from "../store/store";
+
+// True for a 403 role/permission error (RolesGuard's "Insufficient role.",
+// EntitlementsGuard's non-plan denials, etc) as opposed to a 403 the UI
+// handles inline — e.g. PLAN_REQUIRED, which renders a paywall instead of
+// bouncing the user away.
+function isRoleForbiddenError(result: { error?: FetchBaseQueryError }): boolean {
+  const error = result.error;
+  if (!error || error.status !== 403) {
+    return false;
+  }
+  const data = error.data;
+  if (typeof data !== "object" || data === null) {
+    return true;
+  }
+  const code = (data as { code?: unknown }).code;
+  return code !== "PLAN_REQUIRED";
+}
 
 const rawBaseQuery = fetchBaseQuery({
   baseUrl: API_BASE_URL,
@@ -62,6 +80,10 @@ const baseQueryWithReauth: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQue
     }
   }
 
+  if (isRoleForbiddenError(result)) {
+    navigateGlobally("/403");
+  }
+
   return result;
 };
 
@@ -82,6 +104,17 @@ export const prepaiApi = createApi({
     "Leaderboard",
     "XpHistory",
     "VideoLessons",
+    "Notification",
+    "Pack",
+    "TutorConversation",
+    "AdminDocument",
+    "AdminReviewQueue",
+    "AdminSubject",
+    "AdminExam",
+    "AdminNote",
+    "AdminUser",
+    "AdminAgentRun",
+    "AdminPrompt",
   ],
   endpoints: () => ({}),
 });

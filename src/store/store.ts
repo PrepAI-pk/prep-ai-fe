@@ -1,19 +1,14 @@
 import { combineReducers, configureStore } from "@reduxjs/toolkit";
 import { prepaiApi } from "../api/baseApi";
 import { loadState, saveState, type PersistedState } from "./persistence";
-import { adminContentReducer } from "./slices/admin-content-slice";
 import { authReducer } from "./slices/auth-slice";
 import { practiceUiReducer } from "./slices/practice-Ui-slice";
-import { sessionReducer } from "./slices/session-slice";
 
 const rootReducer = combineReducers({
   practiceUi: practiceUiReducer,
-  session: sessionReducer,
-  adminContent: adminContentReducer,
-  // Real auth session (access token + backend user) — not persisted to
-  // localStorage; the httpOnly refresh cookie is what survives a reload
-  // (see useBootstrapAuth). Distinct from `session`, which remains the
-  // client-only demo role-switcher for admin permission-gating UI.
+  // Access token + backend user, incl. role. Not persisted to localStorage;
+  // the httpOnly refresh cookie is what survives a reload (see
+  // useBootstrapAuth), which re-fetches the user (and role) fresh.
   auth: authReducer,
   [prepaiApi.reducerPath]: prepaiApi.reducer,
 });
@@ -31,7 +26,6 @@ store.subscribe(() => {
   const state = store.getState();
   const persistedState: PersistedState = {
     practiceUi: state.practiceUi,
-    session: state.session,
   };
 
   saveState(persistedState);

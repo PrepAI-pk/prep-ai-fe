@@ -1,7 +1,8 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
+import type { BackendRole } from "../../auth/permissions";
 import type { RootState } from "../store";
 
-export type BackendRole = "STUDENT" | "REVIEWER" | "ADMIN";
+export type { BackendRole };
 
 export type AuthUser = {
   id: string;

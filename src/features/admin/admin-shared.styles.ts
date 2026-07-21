@@ -1,5 +1,3 @@
-import type { AgentRunStatus } from "./admin.constants";
-
 export const adminSharedStyles = {
   root: {
     minHeight: "100vh",
@@ -23,7 +21,9 @@ export const adminSharedStyles = {
   },
 };
 
-export const statusToneStyles = (status: AgentRunStatus) => {
+// Backend RunStatus (IDLE|QUEUED|RUNNING|SUCCESS|WARNING|FAILED) is uppercase;
+// callers pass it lowercased, same casing the legacy prototype fixtures used.
+export const statusToneStyles = (status: string) => {
   if (status === "success") {
     return { dot: "success.main", bg: "success.light", fg: "success.main" };
   }
@@ -32,6 +32,9 @@ export const statusToneStyles = (status: AgentRunStatus) => {
   }
   if (status === "warning") {
     return { dot: "secondary.main", bg: "secondary.light", fg: "secondary.main" };
+  }
+  if (status === "failed") {
+    return { dot: "error.main", bg: "error.light", fg: "error.main" };
   }
   return { dot: "text.disabled", bg: "background.default", fg: "text.secondary" };
 };

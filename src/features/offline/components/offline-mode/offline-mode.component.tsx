@@ -1,23 +1,23 @@
-import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Box,
   Button,
   Chip,
+  CircularProgress,
   LinearProgress,
   Paper,
   Switch,
   Typography,
 } from "@mui/material";
 import type { AppScreen } from "../../../../app/screens";
-import { PracticeTopbar } from "../../../practice";
+import { isPlanRequiredError, toApiErrorMessage } from "../../../../api/error";
+import { useGetPreferencesQuery, useUpdatePreferencesMutation } from "../../../../api/me/me.endpoints";
 import {
-  OFFLINE_PACKS,
-  OFFLINE_QUOTA_MB,
-  readPackState,
-  type PersistedPackState,
-  writePackState,
-} from "../../offline.constants";
+  useDownloadPackMutation,
+  useGetPacksQuery,
+  useRemovePackMutation,
+} from "../../../../api/packs/packs.endpoints";
+import { PracticeTopbar } from "../../../practice";
 import {
   downloadProgressSx,
   downloadStatusChipSx,
@@ -30,71 +30,48 @@ type OfflineModePageProps = {
   onNavigateScreen?: (screen: AppScreen) => void;
 };
 
+function OfflinePaywall({ onNavigateScreen }: OfflineModePageProps) {
+  return (
+    <Paper
+      variant="outlined"
+      sx={{ maxWidth: 520, mx: "auto", mt: 6, p: "28px 26px", borderRadius: "20px", textAlign: "center" }}
+    >
+      <Typography sx={{ fontFamily: '"Space Mono", monospace', fontSize: 11, letterSpacing: ".12em", textTransform: "uppercase", color: "secondary.main", fontWeight: 700 }}>
+        Elite feature
+      </Typography>
+      <Typography variant="h3" sx={{ fontSize: 22, mt: 1 }}>
+        Offline packs are part of PrepAI Elite
+      </Typography>
+      <Typography sx={{ mt: 1, color: "text.secondary", fontSize: 14, lineHeight: 1.6 }}>
+        Download subject packs — MCQs, notes, and mocks — for uninterrupted study without a connection.
+      </Typography>
+      <Button
+        variant="contained"
+        sx={{ mt: 2.5, borderRadius: "11px", py: 1.2, px: 3 }}
+        onClick={() => onNavigateScreen?.("subscriptionPaywall")}
+      >
+        Compare plans
+      </Button>
+    </Paper>
+  );
+}
+
 export function OfflineModePage(props: OfflineModePageProps = {}) {
   const { onNavigateScreen } = props;
 
-  const [offlineEnabled, setOfflineEnabled] = useState(true);
-  const [packState, setPackState] = useState<PersistedPackState>(() => readPackState());
+  const { data: preferences } = useGetPreferencesQuery();
+  const [updatePreferences] = useUpdatePreferencesMutation();
+  const packsQuery = useGetPacksQuery();
+  const [downloadPack] = useDownloadPackMutation();
+  const [removePack] = useRemovePackMutation();
 
-  useEffect(() => {
-    writePackState(packState);
-  }, [packState]);
+  const offlineEnabled = preferences?.offlineEnabled ?? false;
+  const packsRequired = isPlanRequiredError(packsQuery.error);
+  const packs = packsQuery.data?.items ?? [];
+  const storage = packsQuery.data?.storage;
 
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      setPackState((previous) => {
-        let changed = false;
-        const next: PersistedPackState = { ...previous };
-
-        for (const pack of OFFLINE_PACKS) {
-          const current = next[pack.id] ?? { state: "available" as const, prog: 0 };
-          if (current.state !== "downloading") {
-            continue;
-          }
-
-          changed = true;
-          const increment = 7 + Math.floor(Math.random() * 11);
-          const nextProg = Math.min(100, current.prog + increment);
-
-          next[pack.id] =
-            nextProg >= 100
-              ? { state: "downloaded", prog: 100 }
-              : { state: "downloading", prog: nextProg };
-        }
-
-        return changed ? next : previous;
-      });
-    }, 460);
-
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, []);
-
-  const downloadedPacks = useMemo(
-    () => OFFLINE_PACKS.filter((pack) => (packState[pack.id]?.state ?? "available") === "downloaded"),
-    [packState],
-  );
-
-  const usedMb = useMemo(
-    () => downloadedPacks.reduce((sum, pack) => sum + pack.sizeMb, 0),
-    [downloadedPacks],
-  );
-
-  const usageProgress = useMemo(() => Math.min(100, Math.round((usedMb / OFFLINE_QUOTA_MB) * 100)), [usedMb]);
-
-  function startDownload(packId: string): void {
-    setPackState((previous) => ({
-      ...previous,
-      [packId]: { state: "downloading", prog: 2 },
-    }));
-  }
-
-  function removeDownload(packId: string): void {
-    setPackState((previous) => ({
-      ...previous,
-      [packId]: { state: "available", prog: 0 },
-    }));
+  function toggleOfflineEnabled(): void {
+    void updatePreferences({ offlineEnabled: !offlineEnabled });
   }
 
   return (
@@ -127,7 +104,7 @@ export function OfflineModePage(props: OfflineModePageProps = {}) {
                 label={offlineEnabled ? "Enabled" : "Disabled"}
                 sx={enabledChipSx(offlineEnabled)}
               />
-              <Switch checked={offlineEnabled} onChange={(event) => setOfflineEnabled(event.target.checked)} />
+              <Switch checked={offlineEnabled} onChange={toggleOfflineEnabled} />
             </Box>
           </Paper>
 
@@ -137,73 +114,87 @@ export function OfflineModePage(props: OfflineModePageProps = {}) {
             </Alert>
           )}
 
-          <Paper variant="outlined" sx={offlineModeStyles.storageCard}>
-            <Box sx={offlineModeStyles.storageHead}>
-              <Typography sx={{ fontWeight: 700 }}>Device storage</Typography>
-              <Typography sx={{ color: "text.secondary", fontSize: 12 }}>
-                {usedMb} MB / {OFFLINE_QUOTA_MB} MB · {downloadedPacks.length} packs
-              </Typography>
+          {packsRequired && <OfflinePaywall onNavigateScreen={onNavigateScreen} />}
+
+          {!packsRequired && packsQuery.isError && (
+            <Alert severity="error" sx={{ borderRadius: 2 }}>
+              Could not load offline packs. {toApiErrorMessage(packsQuery.error, "Please try again.")}
+            </Alert>
+          )}
+
+          {!packsRequired && packsQuery.isLoading && (
+            <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
+              <CircularProgress size={26} />
             </Box>
-            <LinearProgress
-              variant="determinate"
-              value={usageProgress}
-              sx={storageBarSx}
-            />
-          </Paper>
+          )}
 
-          <Box sx={offlineModeStyles.packsGrid}>
-            {OFFLINE_PACKS.map((pack) => {
-              const status = packState[pack.id] ?? { state: "available" as const, prog: 0 };
+          {!packsRequired && storage && (
+            <>
+              <Paper variant="outlined" sx={offlineModeStyles.storageCard}>
+                <Box sx={offlineModeStyles.storageHead}>
+                  <Typography sx={{ fontWeight: 700 }}>Device storage</Typography>
+                  <Typography sx={{ color: "text.secondary", fontSize: 12 }}>
+                    {storage.usedMb} MB / {storage.quotaMb} MB · {storage.packCount} packs
+                  </Typography>
+                </Box>
+                <LinearProgress
+                  variant="determinate"
+                  value={Math.min(100, Math.round((storage.usedMb / storage.quotaMb) * 100))}
+                  sx={storageBarSx}
+                />
+              </Paper>
 
-              return (
-                <Paper key={pack.id} variant="outlined" sx={offlineModeStyles.packCard}>
-                  <Box sx={offlineModeStyles.packHead}>
-                    <Box>
-                      <Typography sx={{ fontWeight: 600 }}>{pack.subject}</Typography>
-                      <Typography sx={{ fontSize: 12, color: "text.secondary", mt: 0.2 }}>
-                        {pack.body} · {pack.lessons} lessons · {pack.sizeMb} MB
-                      </Typography>
+              <Box sx={offlineModeStyles.packsGrid}>
+                {packs.map((pack) => (
+                  <Paper key={pack.id} variant="outlined" sx={offlineModeStyles.packCard}>
+                    <Box sx={offlineModeStyles.packHead}>
+                      <Box>
+                        <Typography sx={{ fontWeight: 600 }}>{pack.name}</Typography>
+                        <Typography sx={{ fontSize: 12, color: "text.secondary", mt: 0.2 }}>
+                          {pack.desc} · {pack.mb} MB
+                        </Typography>
+                      </Box>
+
+                      {pack.state === "DONE" && (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="error"
+                          disabled={!offlineEnabled}
+                          onClick={() => void removePack(pack.id)}
+                        >
+                          Remove
+                        </Button>
+                      )}
+
+                      {pack.state === "AVAILABLE" && (
+                        <Button
+                          size="small"
+                          variant="contained"
+                          disabled={!offlineEnabled}
+                          onClick={() => void downloadPack(pack.id)}
+                        >
+                          Download
+                        </Button>
+                      )}
+
+                      {pack.state === "DOWNLOADING" && (
+                        <Chip size="small" label={`Downloading ${pack.prog ?? 0}%`} sx={downloadStatusChipSx} />
+                      )}
                     </Box>
 
-                    {status.state === "downloaded" && (
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        color="error"
-                        disabled={!offlineEnabled}
-                        onClick={() => removeDownload(pack.id)}
-                      >
-                        Remove
-                      </Button>
+                    {pack.state === "DOWNLOADING" && (
+                      <LinearProgress
+                        variant="determinate"
+                        value={pack.prog ?? 0}
+                        sx={downloadProgressSx}
+                      />
                     )}
-
-                    {status.state === "available" && (
-                      <Button
-                        size="small"
-                        variant="contained"
-                        disabled={!offlineEnabled}
-                        onClick={() => startDownload(pack.id)}
-                      >
-                        Download
-                      </Button>
-                    )}
-
-                    {status.state === "downloading" && (
-                      <Chip size="small" label={`Downloading ${status.prog}%`} sx={downloadStatusChipSx} />
-                    )}
-                  </Box>
-
-                  {status.state === "downloading" && (
-                    <LinearProgress
-                      variant="determinate"
-                      value={status.prog}
-                      sx={downloadProgressSx}
-                    />
-                  )}
-                </Paper>
-              );
-            })}
-          </Box>
+                  </Paper>
+                ))}
+              </Box>
+            </>
+          )}
           </Box>
         </Box>
       </Box>

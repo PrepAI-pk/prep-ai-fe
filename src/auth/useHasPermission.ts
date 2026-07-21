@@ -1,5 +1,5 @@
 import { useAppSelector } from "../store/hooks";
-import { selectPermissions } from "../store/slices/session-slice";
+import { selectPermissions } from "./session";
 import type { Permission } from "./permissions";
 
 export function useHasPermission(permission: Permission): boolean {
