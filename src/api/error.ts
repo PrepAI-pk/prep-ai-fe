@@ -5,9 +5,38 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+// Zod's issue shape from nestjs-zod's ZodValidationPipe, e.g.
+// { code: "VALIDATION_FAILED", message: "Validation failed",
+//   details: { issues: [{ path: ["email"], message: "Invalid email address" }] } }
+function readIssuesMessage(details: unknown): string | undefined {
+  if (!isRecord(details)) {
+    return undefined;
+  }
+
+  const issues = details.issues;
+  if (!Array.isArray(issues)) {
+    return undefined;
+  }
+
+  const flattened = issues
+    .map((issue) => (isRecord(issue) && typeof issue.message === "string" ? issue.message : undefined))
+    .filter((message): message is string => Boolean(message))
+    .join("; ");
+
+  return flattened.trim().length > 0 ? flattened : undefined;
+}
+
 function readMessageFromData(data: unknown): string | undefined {
   if (!isRecord(data)) {
     return undefined;
+  }
+
+  // Zod's per-field issues are more useful than the generic top-level
+  // "Validation failed" message that always accompanies them, so they take
+  // priority when present.
+  const fromIssues = readIssuesMessage(data.details);
+  if (fromIssues) {
+    return fromIssues;
   }
 
   const message = data.message;
@@ -32,6 +61,19 @@ function readMessageFromData(data: unknown): string | undefined {
   }
 
   return undefined;
+}
+
+// True for a 403 PLAN_REQUIRED response (API.md §1) — lets a screen render a
+// paywall/upsell card instead of a generic error banner.
+export function isPlanRequiredError(error: unknown): boolean {
+  const fetchError = error as FetchBaseQueryError;
+  if (typeof fetchError !== "object" || fetchError === null || !("status" in fetchError)) {
+    return false;
+  }
+  if (fetchError.status !== 403) {
+    return false;
+  }
+  return isRecord(fetchError.data) && fetchError.data.code === "PLAN_REQUIRED";
 }
 
 export function toApiErrorMessage(error: unknown, fallback: string): string {

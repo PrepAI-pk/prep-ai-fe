@@ -7,21 +7,16 @@ import {
 } from "@mui/material";
 import type { AppScreen } from "../../../../app/screens";
 import { toApiErrorMessage } from "../../../../api/error";
-import { useMockExams } from "../../../mockExams";
+import { useGetSearchSuggestionsQuery, useSearchQuery } from "../../../../api/search/search.endpoints";
+import type { SearchResultType } from "../../../../api/search/search.types";
+import { PracticeTopbar, usePracticeUi } from "../../../practice";
 import {
-  PracticeTopbar,
-  usePracticeQuestions,
-  usePracticeUi,
-} from "../../../practice";
-import {
-  normalize,
-  NOTE_SEARCH_FIXTURES,
   resultTone,
   SEARCH_SUGGESTION_TERMS,
   SEARCH_TYPE_CHIPS,
   type SearchResult,
+  type SearchTone,
   type SearchType,
-  stripBodyTag,
 } from "../../global-search.constants";
 import {
   globalSearchStyles,
@@ -35,110 +30,73 @@ type GlobalSearchPageProps = {
   onNavigateScreen?: (screen: AppScreen) => void;
 };
 
+const TYPE_META: Record<SearchResultType, { type: Exclude<SearchType, "all">; kind: SearchResult["kind"]; icon: string; tone: SearchTone }> = {
+  MCQ: { type: "mcq", kind: "MCQ", icon: "?", tone: "p" },
+  NOTE: { type: "notes", kind: "Note", icon: "▤", tone: "a" },
+  EXAM: { type: "exams", kind: "Exam", icon: "◷", tone: "g" },
+  SUBJECT: { type: "subjects", kind: "Subject", icon: "◆", tone: "p" },
+};
+
+const SEARCH_DEBOUNCE_MS = 300;
+
 export function GlobalSearchPage(props: GlobalSearchPageProps = {}) {
   const { onNavigateScreen } = props;
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [activeType, setActiveType] = useState<SearchType>("all");
-
-  const questionsQuery = usePracticeQuestions();
-  const examsQuery = useMockExams();
   const practiceUi = usePracticeUi();
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
+  useEffect(() => {
+    const handle = window.setTimeout(() => setDebouncedQuery(query.trim()), SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(handle);
+  }, [query]);
+
+  const hasQuery = debouncedQuery.length > 0;
+
+  const searchQuery = useSearchQuery({ q: debouncedQuery }, { skip: !hasQuery });
+  const suggestionsQuery = useGetSearchSuggestionsQuery(undefined, { skip: hasQuery });
+
   const allResults = useMemo<SearchResult[]>(() => {
-    const questions = questionsQuery.data ?? [];
-    const exams = examsQuery.data ?? [];
-
-    const mcqResults: SearchResult[] = questions.map((question) => ({
-      id: `mcq-${question.id}`,
-      type: "mcq",
-      kind: "MCQ",
-      title: question.questionText,
-      meta: `${stripBodyTag(question.subject)} · Practice topic · ${question.difficulty}`,
-      icon: "?",
-      tone: "p",
-      targetScreen: "mcqLibrary",
-      subject: stripBodyTag(question.subject),
-    }));
-
-    const noteResults: SearchResult[] = NOTE_SEARCH_FIXTURES.map((note) => ({
-      id: note.id,
-      type: "notes",
-      kind: "Note",
-      title: note.title,
-      meta: `${note.subject} · ${note.mins} min read`,
-      icon: "▤",
-      tone: "a",
-      targetScreen: "notesRevision",
-      subject: note.subject,
-    }));
-
-    const examResults: SearchResult[] = exams.map((exam) => ({
-      id: `exam-${exam.id}`,
-      type: "exams",
-      kind: "Exam",
-      title: exam.title,
-      meta: `${exam.body} · ${exam.questionsCount} Q · ${exam.durationMinutes} min`,
-      icon: "◷",
-      tone: "g",
-      targetScreen: "mockExams",
-    }));
-
-    const uniqueSubjects = Array.from(
-      new Set(questions.map((question) => stripBodyTag(question.subject)).filter(Boolean)),
-    ).sort();
-
-    const subjectResults: SearchResult[] = uniqueSubjects.map((subject) => ({
-      id: `subject-${subject}`,
-      type: "subjects",
-      kind: "Subject",
-      title: subject,
-      meta: "Practice available",
-      icon: "◆",
-      tone: "p",
-      targetScreen: "practice",
-      subject,
-    }));
-
-    return [...mcqResults, ...noteResults, ...examResults, ...subjectResults];
-  }, [examsQuery.data, questionsQuery.data]);
+    const groups = searchQuery.data?.groups ?? [];
+    return groups.flatMap((group) => {
+      const meta = TYPE_META[group.type];
+      return group.items.map((item) => ({
+        id: `${meta.type}-${item.id}`,
+        type: meta.type,
+        kind: meta.kind,
+        title: item.title,
+        meta: item.meta,
+        icon: meta.icon,
+        tone: meta.tone,
+        targetScreen: item.targetRef as AppScreen,
+        subject: item.subjectName,
+      }));
+    });
+  }, [searchQuery.data]);
 
   const counts = useMemo(() => {
-    const byType: Record<SearchType, number> = {
-      all: allResults.length,
-      mcq: 0,
-      notes: 0,
-      exams: 0,
-      subjects: 0,
+    const c = searchQuery.data?.counts;
+    return {
+      all: c ? c.MCQ + c.NOTE + c.EXAM + c.SUBJECT : 0,
+      mcq: c?.MCQ ?? 0,
+      notes: c?.NOTE ?? 0,
+      exams: c?.EXAM ?? 0,
+      subjects: c?.SUBJECT ?? 0,
     };
+  }, [searchQuery.data]);
 
-    for (const result of allResults) {
-      byType[result.type] += 1;
-    }
+  const filteredResults = useMemo(
+    () => (activeType === "all" ? allResults : allResults.filter((result) => result.type === activeType)),
+    [activeType, allResults],
+  );
 
-    return byType;
-  }, [allResults]);
-
-  const filteredResults = useMemo(() => {
-    const q = normalize(query);
-
-    return allResults.filter((result) => {
-      const typeOk = activeType === "all" || result.type === activeType;
-      const queryOk =
-        q.length === 0 ||
-        normalize(result.title).includes(q) ||
-        normalize(result.meta).includes(q);
-
-      return typeOk && queryOk;
-    });
-  }, [activeType, allResults, query]);
-
-  const hasQuery = query.trim().length > 0;
+  const suggestions = suggestionsQuery.data?.items ?? SEARCH_SUGGESTION_TERMS;
 
   function handleNavigate(result: SearchResult): void {
     if (result.type === "subjects" && result.subject) {
@@ -193,15 +151,9 @@ export function GlobalSearchPage(props: GlobalSearchPageProps = {}) {
             </Box>
           )}
 
-          {questionsQuery.isError && (
+          {searchQuery.isError && (
             <Alert severity="error" sx={{ borderRadius: 2, mt: 1.1 }}>
-              Could not load MCQ search data. {toApiErrorMessage(questionsQuery.error, "Please try again.")}
-            </Alert>
-          )}
-
-          {examsQuery.isError && (
-            <Alert severity="error" sx={{ borderRadius: 2, mt: 1.1 }}>
-              Could not load exam search data. {toApiErrorMessage(examsQuery.error, "Please try again.")}
+              Could not load search results. {toApiErrorMessage(searchQuery.error, "Please try again.")}
             </Alert>
           )}
 
@@ -211,7 +163,7 @@ export function GlobalSearchPage(props: GlobalSearchPageProps = {}) {
                 Try searching for
               </Typography>
               <Box sx={globalSearchStyles.suggestionsRow}>
-                {SEARCH_SUGGESTION_TERMS.map((item) => (
+                {suggestions.map((item) => (
                   <Box
                     key={item}
                     onClick={() => {
@@ -227,7 +179,7 @@ export function GlobalSearchPage(props: GlobalSearchPageProps = {}) {
             </Box>
           )}
 
-          {hasQuery && filteredResults.length === 0 && (
+          {hasQuery && !searchQuery.isFetching && filteredResults.length === 0 && (
             <Box sx={globalSearchStyles.noResults}>
               <Typography sx={{ fontFamily: '"Source Serif 4", serif', fontSize: 18, color: "text.secondary", mb: "6px" }}>
                 No results found

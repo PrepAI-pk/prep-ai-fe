@@ -1,5 +1,5 @@
-import { useGetMockExamsQuery } from "../../../api/mock-exams/mock-exams.endpoints";
+import { useGetExamsQuery } from "../../../api/mock-exams/mock-exams.endpoints";
 
 export function useMockExams() {
-  return useGetMockExamsQuery(20);
+  return useGetExamsQuery();
 }

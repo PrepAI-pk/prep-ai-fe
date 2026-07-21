@@ -1,131 +1,98 @@
-import { useEffect, useMemo, useState } from "react";
-import { Box, Paper, Typography } from "@mui/material";
-import { PracticeTopbar } from "../../../practice";
-import type {
-  VideoLessonsPageProps,
-  LessonState,
-} from "../../video-lessons.types";
+import { useMemo, useState } from "react";
+import { Alert, Box, CircularProgress, Paper, Typography } from "@mui/material";
 import {
-  VIDEO_LESSONS,
-  defaultLessonStates,
-  highlightText,
-  readPersistedState,
-  writePersistedState,
-} from "../../video-lessons.utils";
+  useDownloadTranscriptMutation,
+  useGetCourseQuery,
+  useGetLessonQuery,
+  useGetTranscriptQuery,
+  useUpdateLessonProgressMutation,
+} from "../../../../api/video-lessons/video-lessons.endpoints";
+import { toApiErrorMessage } from "../../../../api/error";
+import { PracticeTopbar } from "../../../practice";
+import type { VideoLessonsPageProps } from "../../video-lessons.types";
+import { COURSE_ID, highlightText } from "../../video-lessons.utils";
 
 export function VideoLessonsPage(props: VideoLessonsPageProps = {}) {
   const { onNavigateScreen } = props;
 
-  const persisted = useMemo(() => readPersistedState(), []);
-  const [currentLessonId, setCurrentLessonId] = useState<string>(
-    persisted?.cur ?? VIDEO_LESSONS[0].id,
-  );
-  const [lessonStates, setLessonStates] = useState<Record<string, LessonState>>(
-    persisted?.states ?? defaultLessonStates(),
-  );
-  const [search, setSearch] = useState("");
+  const courseQuery = useGetCourseQuery(COURSE_ID);
+  const course = courseQuery.data;
 
-  const currentLesson = useMemo(
-    () =>
-      VIDEO_LESSONS.find((lesson) => lesson.id === currentLessonId) ??
-      VIDEO_LESSONS[0],
-    [currentLessonId],
-  );
+  const [currentLessonId, setCurrentLessonId] = useState<string | undefined>(undefined);
+  const [search, setSearch] = useState("");
+  const [updateLessonProgress] = useUpdateLessonProgressMutation();
+  const [downloadTranscriptTrigger, downloadState] = useDownloadTranscriptMutation();
+
+  // No lesson explicitly selected yet -> derive one from the course response
+  // (its own `currentLessonId`, else the first unlocked lesson) instead of
+  // syncing into state via an effect.
+  const activeLessonId =
+    currentLessonId ??
+    course?.currentLessonId ??
+    course?.lessons.find((lesson) => lesson.state !== "LOCKED")?.id ??
+    course?.lessons[0]?.id;
+
+  const lessonQuery = useGetLessonQuery(activeLessonId ?? "", { skip: !activeLessonId });
+  const currentLesson = lessonQuery.data;
+
+  const transcriptQuery = useGetTranscriptQuery({ lessonId: activeLessonId ?? "" }, { skip: !activeLessonId });
+  const segments = useMemo(() => transcriptQuery.data?.segments ?? [], [transcriptQuery.data]);
 
   const filteredTranscript = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return currentLesson.transcript
+    return segments
       .map((item, index) => ({ item, index }))
       .filter(({ item }) => !q || item.text.toLowerCase().includes(q));
-  }, [currentLesson.transcript, search]);
+  }, [segments, search]);
 
-  const currentProgress = lessonStates[currentLesson.id]?.prog ?? 0;
-  const watchedCount = useMemo(
-    () =>
-      VIDEO_LESSONS.filter(
-        (lesson) => (lessonStates[lesson.id]?.state ?? "next") === "watched",
-      ).length,
-    [lessonStates],
-  );
-  const overallProgress = useMemo(
-    () =>
-      Math.round(
-        ((watchedCount + currentProgress / 100) / VIDEO_LESSONS.length) * 100,
-      ),
-    [currentProgress, watchedCount],
-  );
+  const currentProgress = currentLesson?.progressPct ?? 0;
+  const watchedCount = course?.lessons.filter((lesson) => lesson.state === "WATCHED").length ?? 0;
+  const overallProgress = course?.overallProgressPct ?? 0;
+
   const activeTranscriptIndex = useMemo(() => {
-    if (currentLesson.transcript.length === 0) {
+    if (segments.length === 0) {
       return -1;
     }
-    return Math.floor(
-      (currentProgress / 100) * (currentLesson.transcript.length - 1),
-    );
-  }, [currentLesson.transcript.length, currentProgress]);
-
-  useEffect(() => {
-    writePersistedState({
-      cur: currentLessonId,
-      states: lessonStates,
-    });
-  }, [currentLessonId, lessonStates]);
-
-  function setPlayingLesson(lessonId: string): void {
-    setCurrentLessonId(lessonId);
-    setLessonStates((previous) => {
-      const nextState = { ...previous };
-
-      for (const lesson of VIDEO_LESSONS) {
-        const existing = nextState[lesson.id] ?? {
-          state: "next" as const,
-          prog: 0,
-        };
-
-        if (lesson.id === lessonId) {
-          nextState[lesson.id] = {
-            state: "playing",
-            prog: Math.max(existing.prog, 5),
-          };
-        } else if (existing.state !== "locked") {
-          nextState[lesson.id] = {
-            ...existing,
-            state: existing.prog >= 100 ? "watched" : "next",
-          };
-        }
-      }
-
-      return nextState;
-    });
-  }
+    return Math.floor((currentProgress / 100) * (segments.length - 1));
+  }, [segments.length, currentProgress]);
 
   function markProgress(amount: number): void {
-    setLessonStates((previous) => {
-      const current = previous[currentLesson.id] ?? {
-        state: "playing" as const,
-        prog: 0,
-      };
-      const nextProgress = Math.min(100, current.prog + amount);
-
-      return {
-        ...previous,
-        [currentLesson.id]: {
-          state: nextProgress >= 100 ? "watched" : "playing",
-          prog: nextProgress,
-        },
-      };
+    if (!activeLessonId || !currentLesson) {
+      return;
+    }
+    const nextProgress = Math.min(100, currentProgress + amount);
+    updateLessonProgress({
+      lessonId: activeLessonId,
+      progressPct: nextProgress,
+      lastPositionSec: Math.round((nextProgress / 100) * currentLesson.durationSec),
     });
   }
 
-  function downloadTranscript(): void {
-    const content = currentLesson.transcript
-      .map((item) => `${item.time} ${item.text}`)
-      .join("\n");
+  function setPlayingLesson(lessonId: string): void {
+    const target = course?.lessons.find((lesson) => lesson.id === lessonId);
+    if (!target || target.state === "LOCKED") {
+      return;
+    }
+    setCurrentLessonId(lessonId);
+    const existingProgress = target.state === "WATCHED" ? 100 : target.state === "PLAYING" ? (target.prog ?? 0) : 0;
+    const resumeProgress = Math.max(existingProgress, 5);
+    updateLessonProgress({
+      lessonId,
+      progressPct: resumeProgress,
+      lastPositionSec: Math.round((resumeProgress / 100) * target.durationSec),
+    });
+  }
 
+  async function downloadTranscript(): Promise<void> {
+    if (!activeLessonId || !currentLesson) {
+      return;
+    }
+    const content = await downloadTranscriptTrigger(activeLessonId).unwrap();
     const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${currentLesson.id}-transcript.txt`;
+    link.download = `${currentLesson.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-transcript.txt`;
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -161,6 +128,25 @@ export function VideoLessonsPage(props: VideoLessonsPageProps = {}) {
           }}
         >
           <Box sx={{ maxWidth: 1060, mx: "auto" }}>
+            {courseQuery.isError && (
+              <Alert severity="error" sx={{ borderRadius: 2 }}>
+                Could not load video lessons. {toApiErrorMessage(courseQuery.error, "Please try again.")}
+              </Alert>
+            )}
+
+            {(courseQuery.isLoading || (!currentLesson && !lessonQuery.isError)) && !courseQuery.isError && (
+              <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
+                <CircularProgress size={28} />
+              </Box>
+            )}
+
+            {lessonQuery.isError && (
+              <Alert severity="error" sx={{ borderRadius: 2, mb: 2 }}>
+                {toApiErrorMessage(lessonQuery.error, "Could not load this lesson.")}
+              </Alert>
+            )}
+
+            {course && currentLesson && (
             <Box
               sx={{
                 display: "grid",
@@ -179,9 +165,9 @@ export function VideoLessonsPage(props: VideoLessonsPageProps = {}) {
                     overflow: "hidden",
                     cursor: "pointer",
                     background:
-                      currentLesson.subject === "Pakistan Affairs"
+                      currentLesson.subject.name === "Pakistan Affairs"
                         ? "linear-gradient(135deg, #33508c, #5878b8)"
-                        : currentLesson.subject === "Current Affairs"
+                        : currentLesson.subject.name === "Current Affairs"
                           ? "linear-gradient(135deg, #2f7d5b, #4fae83)"
                           : "linear-gradient(135deg, #7d4a86, #a06bab)",
                   }}
@@ -211,10 +197,7 @@ export function VideoLessonsPage(props: VideoLessonsPageProps = {}) {
                       mt: "calc(28.125% - 37px)",
                     }}
                   >
-                    {(lessonStates[currentLesson.id]?.state ?? "next") ===
-                    "playing"
-                      ? "❙❙"
-                      : "▶"}
+                    {currentLesson.state === "PLAYING" ? "❙❙" : "▶"}
                   </Box>
                   <Box
                     sx={{
@@ -271,7 +254,7 @@ export function VideoLessonsPage(props: VideoLessonsPageProps = {}) {
                       display: "inline-block",
                     }}
                   >
-                    {currentLesson.subject}
+                    {currentLesson.subject.name}
                   </Box>
                   <Typography
                     sx={{
@@ -280,7 +263,7 @@ export function VideoLessonsPage(props: VideoLessonsPageProps = {}) {
                       fontFamily: '"Space Mono", monospace',
                     }}
                   >
-                    {currentLesson.duration}
+                    {currentLesson.mins}
                   </Typography>
                 </Box>
 
@@ -322,7 +305,7 @@ export function VideoLessonsPage(props: VideoLessonsPageProps = {}) {
                   </Box>
                   <Box>
                     <Typography sx={{ fontSize: 13.5, fontWeight: 600 }}>
-                      {currentLesson.tutor}
+                      {currentLesson.tutorName}
                     </Typography>
                     <Typography sx={{ fontSize: 12, color: "text.disabled" }}>
                       PrepAI faculty
@@ -452,7 +435,7 @@ export function VideoLessonsPage(props: VideoLessonsPageProps = {}) {
                     </Box>
 
                     <Box
-                      onClick={downloadTranscript}
+                      onClick={() => void downloadTranscript()}
                       sx={{
                         display: "flex",
                         alignItems: "center",
@@ -464,9 +447,10 @@ export function VideoLessonsPage(props: VideoLessonsPageProps = {}) {
                         borderColor: "divider",
                         fontWeight: 600,
                         fontSize: 13,
-                        cursor: "pointer",
+                        cursor: downloadState.isLoading ? "wait" : "pointer",
                         color: "text.primary",
                         whiteSpace: "nowrap",
+                        opacity: downloadState.isLoading ? 0.6 : 1,
                         "&:hover": { borderColor: "primary.main" },
                       }}
                     >
@@ -484,7 +468,7 @@ export function VideoLessonsPage(props: VideoLessonsPageProps = {}) {
                         color: "text.disabled",
                       }}
                     >
-                      No transcript lines match that search.
+                      {segments.length === 0 ? "No transcript available for this lesson." : "No transcript lines match that search."}
                     </Typography>
                   )}
 
@@ -504,7 +488,7 @@ export function VideoLessonsPage(props: VideoLessonsPageProps = {}) {
                         search.trim() === "";
                       return (
                         <Box
-                          key={`${item.time}-${item.text}`}
+                          key={item.id}
                           onClick={() => markProgress(3)}
                           sx={{
                             display: "flex",
@@ -531,7 +515,7 @@ export function VideoLessonsPage(props: VideoLessonsPageProps = {}) {
                               color: active ? "primary.main" : "text.disabled",
                             }}
                           >
-                            {item.time}
+                            {item.t}
                           </Box>
                           <Typography
                             sx={{
@@ -611,7 +595,7 @@ export function VideoLessonsPage(props: VideoLessonsPageProps = {}) {
                       fontFamily: '"Space Mono", monospace',
                     }}
                   >
-                    {watchedCount}/{VIDEO_LESSONS.length}
+                    {watchedCount}/{course.lessons.length}
                   </Typography>
                 </Box>
 
@@ -644,27 +628,19 @@ export function VideoLessonsPage(props: VideoLessonsPageProps = {}) {
                     overflow: "auto",
                   }}
                 >
-                  {VIDEO_LESSONS.map((lesson, index) => {
-                    const status = lessonStates[lesson.id] ?? {
-                      state: "next" as const,
-                      prog: 0,
-                    };
-                    const active = lesson.id === currentLessonId;
-                    const locked = status.state === "locked";
-                    const watched = status.state === "watched";
+                  {course.lessons.map((lesson) => {
+                    const active = lesson.id === activeLessonId;
+                    const locked = lesson.state === "LOCKED";
+                    const watched = lesson.state === "WATCHED";
                     const badge = watched
                       ? "✓"
                       : locked
                         ? "🔒"
-                        : String(index + 1);
+                        : String(lesson.order);
                     return (
                       <Box
                         key={lesson.id}
-                        onClick={() => {
-                          if (!locked) {
-                            setPlayingLesson(lesson.id);
-                          }
-                        }}
+                        onClick={() => setPlayingLesson(lesson.id)}
                         sx={{
                           display: "flex",
                           alignItems: "center",
@@ -729,7 +705,7 @@ export function VideoLessonsPage(props: VideoLessonsPageProps = {}) {
                               mt: "2px",
                             }}
                           >
-                            {lesson.subject} · {lesson.duration}
+                            {lesson.subject.name} · {lesson.mins}
                           </Typography>
                         </Box>
                       </Box>
@@ -738,6 +714,7 @@ export function VideoLessonsPage(props: VideoLessonsPageProps = {}) {
                 </Box>
               </Paper>
             </Box>
+            )}
           </Box>
         </Box>
       </Box>

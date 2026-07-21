@@ -1,6 +1,8 @@
-import { Box, Button, Paper, Typography } from "@mui/material";
+import { Alert, Box, Button, Paper, Typography } from "@mui/material";
 import type { AppScreen } from "../../../../app/screens";
-import type { MockExamRunResult } from "../../mock-exams.types";
+import { toApiErrorMessage } from "../../../../api/error";
+import { useGetResultQuery } from "../../../../api/mock-exams/mock-exams.endpoints";
+import { PracticeSkeleton } from "../../../../components/loading/practice-skeleton";
 import { PracticeTopbar } from "../../../practice";
 import {
   mockExamsStyles,
@@ -11,9 +13,9 @@ import {
 } from "../../mock-exams.styles";
 
 type MockExamResultPageProps = {
-  result: MockExamRunResult;
+  attemptId: string;
   onNavigateScreen?: (screen: AppScreen) => void;
-  onRetake?: () => void;
+  onRetake?: (examId: string) => void;
   onBackToExams?: () => void;
 };
 
@@ -24,19 +26,46 @@ function formatDuration(seconds: number): string {
 }
 
 export function MockExamResultPage(props: MockExamResultPageProps) {
-  const { result, onNavigateScreen, onRetake, onBackToExams } = props;
-  const donutDegrees = Math.round((result.correct / Math.max(result.totalQuestions, 1)) * 360);
-  const flaggedCount = Object.values(result.flags).filter(Boolean).length;
-  const correctWidth = (result.breakdown.correct / result.totalQuestions) * 100;
-  const wrongWidth = (result.breakdown.wrong / result.totalQuestions) * 100;
-  const skippedWidth = (result.breakdown.skipped / result.totalQuestions) * 100;
+  const { attemptId, onNavigateScreen, onRetake, onBackToExams } = props;
+  const resultQuery = useGetResultQuery(attemptId);
+
+  if (resultQuery.isLoading) {
+    return (
+      <Box sx={mockExamsStyles.shell}>
+        <Box sx={{ ...mockExamsStyles.scrollBody, ...mockExamsStyles.resultContentWrap }}>
+          <PracticeSkeleton />
+        </Box>
+      </Box>
+    );
+  }
+
+  if (resultQuery.isError || !resultQuery.data) {
+    return (
+      <Box sx={mockExamsStyles.shell}>
+        <Box sx={mockExamsStyles.scrollBody}>
+          <Alert severity="error" sx={mockExamsStyles.stateCard}>
+            Could not load this result.{" "}
+            {toApiErrorMessage(resultQuery.error, "Please try again.")}
+          </Alert>
+        </Box>
+      </Box>
+    );
+  }
+
+  const result = resultQuery.data;
+  // The donut is accuracy of ATTEMPTED (acc); the rank band is of TOTAL (pct)
+  // — they diverge whenever anything is skipped, so they're kept distinct.
+  const donutDegrees = Math.round((result.acc / 100) * 360);
+  const correctWidth = (result.correct / result.total) * 100;
+  const wrongWidth = (result.wrong / result.total) * 100;
+  const skippedWidth = (result.skipped / result.total) * 100;
 
   return (
     <Box sx={mockExamsStyles.shell}>
         <PracticeTopbar
           currentScreen="mockExamResult"
           title="Mock Exam Result"
-          subtitle={`${result.exam.title} · analysis`}
+          subtitle={`${result.exam.name} · analysis`}
           searchPlaceholder="Search Result"
           onOpenGlobalSearch={() => onNavigateScreen?.("globalSearch")}
           onOpenSettings={() => onNavigateScreen?.("settingsProfile")}
@@ -51,17 +80,17 @@ export function MockExamResultPage(props: MockExamResultPageProps) {
                 Net Score
               </Typography>
               <Typography variant="h1" sx={mockExamsStyles.resultHeroScore}>
-                {result.score.toFixed(2)} / {result.maxScore}
+                {result.score} / {result.total}
               </Typography>
               <Box sx={mockExamsStyles.resultHeroBadge}>
-                {result.isQualified ? "Qualified" : "Below cut-off"} · Pass mark {result.passMark}
+                {result.verdict} · Pass mark {result.passMark}
               </Box>
             </Box>
 
             <Box sx={resultDonutSx(donutDegrees)}>
               <Box sx={mockExamsStyles.resultDonutInner}>
                 <Typography sx={mockExamsStyles.resultDonutText}>
-                  {result.accuracy}%
+                  {result.acc}%
                 </Typography>
               </Box>
             </Box>
@@ -69,10 +98,10 @@ export function MockExamResultPage(props: MockExamResultPageProps) {
 
           <Box sx={mockExamsStyles.resultStatsGrid}>
             {[
-              { label: "Attempted", value: `${result.attempted}/${result.totalQuestions}` },
-              { label: "Accuracy", value: `${result.accuracy}%` },
-              { label: "Est. rank", value: result.estimatedRank },
-              { label: "Time taken", value: formatDuration(result.timeTakenSeconds) },
+              { label: "Attempted", value: `${result.attempted}/${result.total}` },
+              { label: "Accuracy", value: `${result.acc}%` },
+              { label: "Est. rank", value: result.rank },
+              { label: "Time taken", value: formatDuration(result.taken) },
             ].map((item) => (
               <Paper key={item.label} variant="outlined" sx={mockExamsStyles.resultStatCard}>
                 <Typography sx={mockExamsStyles.resultStatLabel}>{item.label}</Typography>
@@ -80,10 +109,6 @@ export function MockExamResultPage(props: MockExamResultPageProps) {
               </Paper>
             ))}
           </Box>
-
-          <Typography sx={mockExamsStyles.resultHint}>
-            Flagged questions in run: {flaggedCount}
-          </Typography>
 
           <Paper variant="outlined" sx={mockExamsStyles.resultPanel}>
             <Typography sx={mockExamsStyles.resultPanelTitle}>Answer breakdown</Typography>
@@ -102,14 +127,14 @@ export function MockExamResultPage(props: MockExamResultPageProps) {
           <Paper variant="outlined" sx={mockExamsStyles.resultPanel}>
             <Typography sx={mockExamsStyles.resultPanelTitle}>Subject-wise breakdown</Typography>
             <Box sx={mockExamsStyles.resultSubjectsGrid}>
-              {result.subjectBreakdown.map((item) => (
-                <Box key={item.subject}>
+              {result.bySubject.map((item) => (
+                <Box key={item.name}>
                   <Box sx={mockExamsStyles.resultSubjectHeader}>
-                    <Typography sx={mockExamsStyles.resultSubjectText}>{item.subject}</Typography>
-                    <Typography sx={mockExamsStyles.resultSubjectText}>{item.correct}/{item.attempted} · {item.accuracy}%</Typography>
+                    <Typography sx={mockExamsStyles.resultSubjectText}>{item.name}</Typography>
+                    <Typography sx={mockExamsStyles.resultSubjectText}>{item.correct}/{item.attempted} · {item.acc}%</Typography>
                   </Box>
                   <Box sx={mockExamsStyles.resultSubjectTrack}>
-                    <Box sx={resultSubjectFillSx(item.accuracy)} />
+                    <Box sx={resultSubjectFillSx(item.acc)} />
                   </Box>
                 </Box>
               ))}
@@ -121,21 +146,21 @@ export function MockExamResultPage(props: MockExamResultPageProps) {
               AI Analysis
             </Typography>
             <Typography sx={mockExamsStyles.resultInsightText}>
-              Accuracy dropped most in low-confidence flagged items. Prioritize practice on the two weakest subjects, then retake a timed mini mock for score recovery.
+              {result.analysis}
             </Typography>
           </Paper>
 
           <Paper variant="outlined" sx={mockExamsStyles.resultPanel}>
             <Typography sx={mockExamsStyles.resultPanelTitle}>Question review</Typography>
             <Box sx={mockExamsStyles.resultReviewGrid}>
-              {result.review.slice(0, 30).map((row) => (
+              {result.review.map((row) => (
                 <Box key={row.questionId} sx={mockExamsStyles.resultReviewRow}>
-                  <Typography sx={mockExamsStyles.resultReviewId}>Q{row.questionId}</Typography>
+                  <Typography sx={mockExamsStyles.resultReviewId}>Q{row.order}</Typography>
                   <Typography sx={mockExamsStyles.resultReviewSubject}>{row.subject}</Typography>
-                  <Typography sx={resultReviewStatusSx(row.isCorrect, row.yourAnswerIndex === null)}>
-                    {row.yourAnswerIndex === null
+                  <Typography sx={resultReviewStatusSx(row.status === "CORRECT", row.status === "SKIPPED")}>
+                    {row.your === null
                       ? "Skipped"
-                      : `Your ${String.fromCharCode(65 + row.yourAnswerIndex)} · Correct ${String.fromCharCode(65 + row.correctIndex)}`}
+                      : `Your ${String.fromCharCode(65 + row.your)} · Correct ${String.fromCharCode(65 + row.correct)}`}
                   </Typography>
                 </Box>
               ))}
@@ -144,7 +169,7 @@ export function MockExamResultPage(props: MockExamResultPageProps) {
 
           <Box sx={mockExamsStyles.resultActions}>
             <Button variant="outlined" onClick={onBackToExams}>Back to exams</Button>
-            <Button variant="contained" onClick={onRetake}>Retake exam</Button>
+            <Button variant="contained" onClick={() => onRetake?.(result.exam.id)}>Retake exam</Button>
             <Button variant="contained" color="success" onClick={() => onNavigateScreen?.("aiTutor")}>Practice weak areas</Button>
           </Box>
           </Box>

@@ -3,12 +3,15 @@ export { MockExamRunnerPage } from "./components/mock-exam-runner/mock-exam-runn
 export { MockExamResultPage } from "./components/mock-exam-result/mock-exam-result.component";
 export { useMockExams } from "./hooks/use-mock-exams.hook";
 export type {
-	EstimatedRank,
-	MockExam,
-	MockExamRunResult,
-	MockExamQuestionReview,
-	RunnerQuestion,
-	SubjectBreakdownItem,
+	AttemptQuestion,
+	Exam,
+	ExamResult,
+	ExamResultReviewRow,
+	ExamResultSubject,
+	RecentAttempt,
+	ResumeAttemptQuestion,
+	ResumeAttemptResponse,
+	StartAttemptResponse,
 } from "./mock-exams.types";
 export {
 	MOCK_EXAMS_EMPTY_TEXT,

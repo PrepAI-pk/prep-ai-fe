@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Button, Chip, Paper, Typography } from "@mui/material";
+import { useEffect, useRef, useState } from "react";
+import { Alert, Box, Button, Chip, Paper, Typography } from "@mui/material";
 import type { AppScreen } from "../../../../app/screens";
-import type {
-  EstimatedRank,
-  MockExam,
-  MockExamRunResult,
-  RunnerQuestion,
-  SubjectBreakdownItem,
-} from "../../mock-exams.types";
+import { toApiErrorMessage } from "../../../../api/error";
+import {
+  useGetAttemptQuery,
+  usePatchAttemptAnswersMutation,
+  useSubmitAttemptMutation,
+} from "../../../../api/mock-exams/mock-exams.endpoints";
+import { PracticeSkeleton } from "../../../../components/loading/practice-skeleton";
 import { PracticeTopbar } from "../../../practice";
 import {
   mockExamsStyles,
@@ -17,33 +17,13 @@ import {
   runnerTimerValueSx,
 } from "../../mock-exams.styles";
 
+const AUTOSAVE_INTERVAL_MS = 5000;
+
 type MockExamRunnerPageProps = {
-  exam: MockExam;
+  attemptId: string;
   onNavigateScreen?: (screen: AppScreen) => void;
-  onSubmitRun?: (result: MockExamRunResult) => void;
+  onSubmitted?: (attemptId: string) => void;
 };
-
-function buildRunnerQuestions(exam: MockExam): RunnerQuestion[] {
-  const subjectPool = [
-    `${exam.body} Basics`,
-    `${exam.body} Current Affairs`,
-    `${exam.body} Analytical`,
-    `${exam.body} Applied Knowledge`,
-  ];
-
-  return Array.from({ length: exam.questionsCount }, (_, index) => ({
-    id: index + 1,
-    subject: subjectPool[index % subjectPool.length],
-    text: `${exam.title} · Question ${index + 1}`,
-    options: [
-      "Option A",
-      "Option B",
-      "Option C",
-      "Option D",
-    ],
-    correctIndex: index % 4,
-  }));
-}
 
 function formatRemainingTime(totalSeconds: number): string {
   const safeSeconds = Math.max(totalSeconds, 0);
@@ -52,166 +32,180 @@ function formatRemainingTime(totalSeconds: number): string {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
-function resolveEstimatedRank(percentCorrect: number): EstimatedRank {
-  if (percentCorrect >= 85) {
-    return "Top 6%";
-  }
-
-  if (percentCorrect >= 70) {
-    return "Top 18%";
-  }
-
-  if (percentCorrect >= 50) {
-    return "Top 35%";
-  }
-
-  return "Top 60%";
-}
-
-function buildSubjectBreakdown(
-  reviewRows: MockExamRunResult["review"],
-): SubjectBreakdownItem[] {
-  const aggregate = new Map<string, { attempted: number; correct: number }>();
-
-  for (const row of reviewRows) {
-    const current = aggregate.get(row.subject) ?? { attempted: 0, correct: 0 };
-    if (row.yourAnswerIndex !== null) {
-      current.attempted += 1;
-    }
-    if (row.isCorrect) {
-      current.correct += 1;
-    }
-    aggregate.set(row.subject, current);
-  }
-
-  return Array.from(aggregate.entries()).map(([subject, values]) => ({
-    subject,
-    attempted: values.attempted,
-    correct: values.correct,
-    accuracy: values.attempted > 0 ? Math.round((values.correct / values.attempted) * 100) : 0,
-  }));
+// 410 EXPIRED means the server already auto-graded a late submission — that's
+// not a failure from the runner's point of view, just a signal to move on.
+function isExpiredError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "status" in error &&
+    (error as { status?: unknown }).status === 410
+  );
 }
 
 export function MockExamRunnerPage(props: MockExamRunnerPageProps) {
-  const { exam, onNavigateScreen, onSubmitRun } = props;
-  const questions = useMemo(() => buildRunnerQuestions(exam), [exam]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [answers, setAnswers] = useState<Record<number, number>>({});
-  const [flags, setFlags] = useState<Record<number, boolean>>({});
-  const [remainingSeconds, setRemainingSeconds] = useState(exam.durationMinutes * 60);
-  const submitTriggeredRef = useRef(false);
-  const totalSeconds = exam.durationMinutes * 60;
+  const { attemptId, onNavigateScreen, onSubmitted } = props;
 
+  const attemptQuery = useGetAttemptQuery(attemptId);
+  const [patchAnswers] = usePatchAttemptAnswersMutation();
+  const [submitAttempt, { isLoading: isSubmitting }] = useSubmitAttemptMutation();
+
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [answers, setAnswers] = useState<Record<string, number>>({});
+  const [flags, setFlags] = useState<Record<string, boolean>>({});
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const hasSeededRef = useRef(false);
+  const dirtyRef = useRef<{ answers: Record<string, number>; flags: Record<string, boolean> }>({
+    answers: {},
+    flags: {},
+  });
+  const submitTriggeredRef = useRef(false);
+
+  // Seed local state once, either from a fresh start or a resumed attempt —
+  // subsequent background refetches must not stomp on in-progress edits.
+  useEffect(() => {
+    if (hasSeededRef.current || !attemptQuery.data) {
+      return;
+    }
+    hasSeededRef.current = true;
+
+    const seededAnswers: Record<string, number> = {};
+    const seededFlags: Record<string, boolean> = {};
+    for (const question of attemptQuery.data.questions) {
+      if (question.selectedIndex !== null) {
+        seededAnswers[question.id] = question.selectedIndex;
+      }
+      if (question.flagged) {
+        seededFlags[question.id] = true;
+      }
+    }
+    setAnswers(seededAnswers);
+    setFlags(seededFlags);
+  }, [attemptQuery.data]);
+
+  const questions = attemptQuery.data?.questions ?? [];
   const currentQuestion = questions[currentIndex];
   const answeredCount = Object.keys(answers).length;
 
+  async function flushDirty(): Promise<void> {
+    const pending = dirtyRef.current;
+    if (Object.keys(pending.answers).length === 0 && Object.keys(pending.flags).length === 0) {
+      return;
+    }
+    dirtyRef.current = { answers: {}, flags: {} };
+    try {
+      await patchAnswers({ attemptId, answers: pending.answers, flags: pending.flags }).unwrap();
+    } catch {
+      // Best-effort autosave — the next flush (or the submit-time flush) retries.
+    }
+  }
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => void flushDirty(), AUTOSAVE_INTERVAL_MS);
+    return () => {
+      window.clearInterval(intervalId);
+      void flushDirty();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attemptId]);
+
+  // A "latest callback" ref, kept current via an effect (not a render-time
+  // assignment) so both the timer effect and the submit button always call
+  // the version closed over the freshest attemptId/state without needing to
+  // re-run the 1s timer effect on every render.
+  const handleSubmit = useRef<() => Promise<void>>(async () => {});
+  useEffect(() => {
+    handleSubmit.current = async () => {
+      if (submitTriggeredRef.current) {
+        return;
+      }
+      submitTriggeredRef.current = true;
+      await flushDirty();
+      try {
+        await submitAttempt(attemptId).unwrap();
+        onSubmitted?.(attemptId);
+      } catch (error) {
+        if (isExpiredError(error)) {
+          onSubmitted?.(attemptId);
+          return;
+        }
+        submitTriggeredRef.current = false;
+        setSubmitError(toApiErrorMessage(error, "Could not submit this attempt. Please try again."));
+      }
+    };
+  });
+
+  // Ticks from the server-issued expiresAt, not a client-owned countdown —
+  // reloading recomputes from the same instant instead of resetting the clock.
+  useEffect(() => {
+    const expiresAt = attemptQuery.data?.expiresAt;
+    if (!expiresAt) {
+      return;
+    }
+
+    function tick(): void {
+      const secondsLeft = Math.round((new Date(expiresAt as string).getTime() - Date.now()) / 1000);
+      setRemainingSeconds(Math.max(secondsLeft, 0));
+      if (secondsLeft <= 0) {
+        void handleSubmit.current();
+      }
+    }
+
+    tick();
+    const intervalId = window.setInterval(tick, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [attemptQuery.data?.expiresAt]);
+
   function handleSelectOption(optionIndex: number): void {
-    setAnswers((previous) => ({
-      ...previous,
-      [currentQuestion.id]: optionIndex,
-    }));
+    if (!currentQuestion) {
+      return;
+    }
+    setAnswers((previous) => ({ ...previous, [currentQuestion.id]: optionIndex }));
+    dirtyRef.current.answers[currentQuestion.id] = optionIndex;
   }
 
   function handleToggleFlag(): void {
-    setFlags((previous) => ({
-      ...previous,
-      [currentQuestion.id]: !previous[currentQuestion.id],
-    }));
-  }
-
-  function handleSubmit(): void {
-    if (submitTriggeredRef.current) {
+    if (!currentQuestion) {
       return;
     }
-
-    submitTriggeredRef.current = true;
-    onSubmitRun?.(buildRunResult());
+    const next = !flags[currentQuestion.id];
+    setFlags((previous) => ({ ...previous, [currentQuestion.id]: next }));
+    dirtyRef.current.flags[currentQuestion.id] = next;
   }
 
-  const buildRunResult = useCallback((): MockExamRunResult => {
-    const review = questions.map((question) => {
-      const yourAnswerIndex = answers[question.id] ?? null;
-      const isCorrect = yourAnswerIndex !== null && yourAnswerIndex === question.correctIndex;
+  if (attemptQuery.isLoading) {
+    return (
+      <Box sx={mockExamsStyles.shell}>
+        <Box sx={{ ...mockExamsStyles.scrollBody, ...mockExamsStyles.runnerContentWrap }}>
+          <PracticeSkeleton />
+        </Box>
+      </Box>
+    );
+  }
 
-      return {
-        questionId: question.id,
-        subject: question.subject,
-        yourAnswerIndex,
-        correctIndex: question.correctIndex,
-        isCorrect,
-      };
-    });
+  if (attemptQuery.isError || !attemptQuery.data || !currentQuestion) {
+    return (
+      <Box sx={mockExamsStyles.shell}>
+        <Box sx={mockExamsStyles.scrollBody}>
+          <Alert severity="error" sx={mockExamsStyles.stateCard}>
+            Could not load this exam attempt.{" "}
+            {toApiErrorMessage(attemptQuery.error, "Please start a new one.")}
+          </Alert>
+        </Box>
+      </Box>
+    );
+  }
 
-    const attempted = review.filter((row) => row.yourAnswerIndex !== null).length;
-    const correct = review.filter((row) => row.isCorrect).length;
-    const wrong = Math.max(attempted - correct, 0);
-    const skipped = questions.length - attempted;
-    const score = correct - wrong * exam.negativeMarking;
-    const maxScore = questions.length;
-    const accuracy = attempted > 0 ? Math.round((correct / attempted) * 100) : 0;
-    const passMark = Math.round(maxScore * 0.4);
-    const isQualified = score >= passMark;
-    const percentCorrect = Math.round((correct / questions.length) * 100);
-    const subjectBreakdown = buildSubjectBreakdown(review);
-    const timeTakenSeconds = Math.max(totalSeconds - remainingSeconds, 0);
-
-    return {
-      exam,
-      answers,
-      flags,
-      totalQuestions: questions.length,
-      attempted,
-      correct,
-      wrong,
-      skipped,
-      score,
-      maxScore,
-      accuracy,
-      estimatedRank: resolveEstimatedRank(percentCorrect),
-      passMark,
-      isQualified,
-      timeTakenSeconds,
-      breakdown: {
-        correct,
-        wrong,
-        skipped,
-      },
-      subjectBreakdown,
-      review,
-    };
-  }, [answers, exam, flags, questions, remainingSeconds, totalSeconds]);
-
-  useEffect(() => {
-    if (submitTriggeredRef.current) {
-      return;
-    }
-
-    const intervalId = window.setInterval(() => {
-      setRemainingSeconds((previous) => {
-        if (previous <= 1) {
-          if (!submitTriggeredRef.current) {
-            submitTriggeredRef.current = true;
-            onSubmitRun?.(buildRunResult());
-          }
-          window.clearInterval(intervalId);
-          return 0;
-        }
-
-        return previous - 1;
-      });
-    }, 1000);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, [buildRunResult, onSubmitRun]);
+  const { exam } = attemptQuery.data;
 
   return (
     <Box sx={mockExamsStyles.shell}>
         <PracticeTopbar
           currentScreen="mockExamRunner"
           title="Mock Exam Runner"
-          subtitle={`${exam.title} · ${exam.questionsCount} questions`}
+          subtitle={`${exam.name} · ${questions.length} questions`}
           searchPlaceholder="Search Question"
           onOpenGlobalSearch={() => onNavigateScreen?.("globalSearch")}
           onOpenSettings={() => onNavigateScreen?.("settingsProfile")}
@@ -220,23 +214,29 @@ export function MockExamRunnerPage(props: MockExamRunnerPageProps) {
 
         <Box sx={mockExamsStyles.scrollBody}>
           <Box sx={mockExamsStyles.runnerContentWrap}>
+          {submitError && (
+            <Alert severity="error" sx={{ ...mockExamsStyles.stateCard, gridColumn: "1 / -1" }}>
+              {submitError}
+            </Alert>
+          )}
+
           <Paper
             variant="outlined"
             sx={mockExamsStyles.runnerQuestionCard}
           >
             <Box sx={mockExamsStyles.runnerQuestionMetaRow}>
               <Chip
-                label={exam.body}
+                label={exam.name}
                 size="small"
                 sx={mockExamsStyles.runnerQuestionChip}
               />
               <Typography sx={mockExamsStyles.runnerQuestionMetaText}>
-                {currentIndex + 1} / {questions.length} · {currentQuestion.subject}
+                {currentIndex + 1} / {questions.length} · {currentQuestion.subject.name}
               </Typography>
             </Box>
 
             <Typography variant="h3" sx={mockExamsStyles.runnerQuestionTitle}>
-              {currentQuestion.text}
+              {currentQuestion.questionText}
             </Typography>
 
             <Box sx={mockExamsStyles.runnerOptionsGrid}>
@@ -280,9 +280,7 @@ export function MockExamRunnerPage(props: MockExamRunnerPageProps) {
 
               <Button
                 variant="contained"
-                onClick={() =>
-                  setCurrentIndex((index) => Math.min(index + 1, questions.length - 1))
-                }
+                onClick={() => setCurrentIndex((index) => Math.min(index + 1, questions.length - 1))}
                 disabled={currentIndex === questions.length - 1}
               >
                 Next
@@ -317,7 +315,7 @@ export function MockExamRunnerPage(props: MockExamRunnerPageProps) {
                       onClick={() => setCurrentIndex(index)}
                       sx={runnerPaletteItemSx(isCurrent, isFlagged, isAnswered)}
                     >
-                      {question.id}
+                      {question.order}
                     </Box>
                   );
                 })}
@@ -328,9 +326,10 @@ export function MockExamRunnerPage(props: MockExamRunnerPageProps) {
               variant="contained"
               color="success"
               sx={mockExamsStyles.runnerSubmitButton}
-              onClick={handleSubmit}
+              onClick={() => void handleSubmit.current()}
+              disabled={isSubmitting}
             >
-              Submit ({answeredCount}/{questions.length})
+              {isSubmitting ? "Submitting…" : `Submit (${answeredCount}/${questions.length})`}
             </Button>
           </Box>
           </Box>

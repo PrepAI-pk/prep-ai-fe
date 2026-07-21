@@ -1,112 +1,151 @@
 import { useMemo, useState } from "react";
-import { useAppDispatch, useAppSelector } from "../../../store/hooks";
-import { completeDailyChallenge } from "../../../store/slices/daily-challenge-slice";
+import { useGetBadgesQuery } from "../../../api/badges/badges.endpoints";
+import type { BadgeItem } from "../../../api/badges/badges.types";
 import {
-  ChallengeState,
-  challengeQuestions,
-  type UnlockedBadge,
-  XP_CORRECT,
-  XP_WRONG,
-  BADGE_DEFS,
-  BADGE_TOTAL_XP,
-  LEVEL_NAMES,
-  XP_PER_LEVEL,
-} from "../daily-challenge.constants";
+  useAnswerDailyChallengeMutation,
+  useCompleteDailyChallengeMutation,
+  useGetDailyChallengeQuery,
+  useStartDailyChallengeMutation,
+} from "../../../api/daily-challenge/daily-challenge.endpoints";
+import { ChallengeState, type UnlockedBadge } from "../daily-challenge.constants";
+import { formatDateLabel, mapWeek } from "../daily-challenge.utils";
+import type { IBadge } from "../components/intro-status/intro-status.types";
+import type { IQuestion } from "../components/play-status/play-status.types";
 
-import {
-  formatDateLabel,
-  getTodayKey,
-  getWeekDays,
-} from "./../daily-challenge.utils";
-import type { WeekDayStatus } from "../daily-challenge.types";
+// The daily-challenge XP formula (correct*10 + 20 completion + 15 streak) is
+// server-authoritative (packages/contracts `dailyChallengeXp`) — this mirrors
+// only the "up to" figure shown on the intro card before the real total is
+// known, not a value ever used for grading.
+const MAX_XP_PER_QUESTION = 10;
+const COMPLETION_AND_STREAK_BONUS = 35;
+
+function mapBadges(items: BadgeItem[]): IBadge[] {
+  return items.map((b) => ({
+    id: b.code,
+    name: b.name,
+    desc: b.earned ? "" : b.description,
+    sym: b.symbol,
+    tone: b.tone.toLowerCase() as "a" | "p" | "g",
+    earned: b.earned,
+    ...(b.earned ? {} : { cur: b.cur, goal: b.goal }),
+  }));
+}
 
 export function useDailyChallengeSession() {
-  const dispatch = useAppDispatch();
-  const dc = useAppSelector((s) => s.dailyChallenge);
+  const { data: challenge } = useGetDailyChallengeQuery();
+  const { data: badgesData } = useGetBadgesQuery();
+  const [startDailyChallengeMutation] = useStartDailyChallengeMutation();
+  const [answerDailyChallengeMutation] = useAnswerDailyChallengeMutation();
+  const [completeDailyChallengeMutation] = useCompleteDailyChallengeMutation();
 
   const [state, setState] = useState<ChallengeState>(ChallengeState.Intro);
+  const [questions, setQuestions] = useState<IQuestion[]>([]);
+  const [answers, setAnswers] = useState<Record<string, number>>({});
   const [questionIndex, setQuestionIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [score, setScore] = useState(0);
   const [earnedXp, setEarnedXp] = useState(0);
+  const [resultStreak, setResultStreak] = useState(0);
   const [unlockOverlayOpen, setUnlockOverlayOpen] = useState(false);
-  const [unlockedBadge, setUnlockedBadge] = useState<UnlockedBadge | null>(
-    null,
-  );
+  const [unlockedBadge, setUnlockedBadge] = useState<UnlockedBadge | null>(null);
 
-  const current = challengeQuestions[questionIndex];
-  const progress = Math.round(
-    ((questionIndex + 1) / challengeQuestions.length) * 100,
-  );
+  const current = questions[questionIndex];
+  const progress = questions.length ? Math.round(((questionIndex + 1) / questions.length) * 100) : 0;
 
-  // ── Derived from store ──
-  const todayKey = getTodayKey();
-  const isDoneToday = dc.lastCompletedDateKey === todayKey;
+  const isDoneToday = challenge?.completed ?? false;
+  const dateLabel = useMemo(() => formatDateLabel(challenge?.date), [challenge?.date]);
+  const weekDays = useMemo(() => mapWeek(challenge?.week ?? []), [challenge?.week]);
 
-  const level = Math.floor(BADGE_TOTAL_XP / XP_PER_LEVEL) + 1;
-  const levelName = LEVEL_NAMES[Math.min(level - 1, LEVEL_NAMES.length - 1)];
-  const xpInLevel = BADGE_TOTAL_XP - (level - 1) * XP_PER_LEVEL;
-  const levelProgressPct = (xpInLevel / XP_PER_LEVEL) * 100;
-  const xpToNextLevel = XP_PER_LEVEL - xpInLevel;
+  const dc = {
+    streak: challenge?.stats.streak ?? 0,
+    bestStreak: challenge?.stats.best ?? 0,
+    totalXp: challenge?.stats.totalXp ?? 0,
+  };
+  const level = challenge?.level.current ?? 1;
+  const levelName = challenge?.level.name ?? "Novice";
+  const levelProgressPct = challenge ? (challenge.level.xpInLevel / challenge.level.xpPerLevel) * 100 : 0;
+  const xpToNextLevel = challenge ? challenge.level.xpPerLevel - challenge.level.xpInLevel : 0;
 
-  const badges = useMemo(() => BADGE_DEFS, []);
+  const badges = useMemo(() => mapBadges(badgesData?.items ?? []), [badgesData]);
   const earnedBadgeCount = badges.filter((b) => b.earned).length;
+  const questionCount = challenge?.questionCount ?? 5;
+  const potentialXp = questionCount * MAX_XP_PER_QUESTION + COMPLETION_AND_STREAK_BONUS;
 
-  const weekDays = useMemo<WeekDayStatus[]>(
-    () => getWeekDays(dc.weekHistory),
-    [dc.weekHistory],
-  );
-  const dateLabel = useMemo(() => formatDateLabel(), []);
-  const potentialXp = challengeQuestions.length * XP_CORRECT;
-
-  function startChallenge(): void {
-    setState(ChallengeState.Play);
+  async function startChallenge(): Promise<void> {
+    const res = await startDailyChallengeMutation().unwrap();
+    setQuestions(
+      res.questions.map((q) => ({
+        id: q.id,
+        question: q.questionText,
+        options: q.options,
+        subject: q.subject.name,
+        difficulty: q.difficulty,
+        correctIndex: null,
+        explanation: null,
+      })),
+    );
+    setAnswers({});
     setQuestionIndex(0);
     setSelectedOption(null);
     setRevealed(false);
     setScore(0);
     setEarnedXp(0);
+    setState(ChallengeState.Play);
   }
 
-  function handleSelect(index: number): void {
-    if (revealed) return;
-    setSelectedOption(index);
-    setRevealed(true);
-    if (index === current.correctIndex) {
-      setScore((prev) => prev + 1);
-      setEarnedXp((prev) => prev + XP_CORRECT);
-    } else {
-      setEarnedXp((prev) => prev + XP_WRONG);
+  async function handleSelect(index: number): Promise<void> {
+    if (revealed || !current) {
+      return;
     }
+    setSelectedOption(index);
+    setAnswers((prev) => ({ ...prev, [current.id]: index }));
+
+    const res = await answerDailyChallengeMutation({ questionId: current.id, selectedIndex: index }).unwrap();
+    setQuestions((prev) =>
+      prev.map((q, i) => (i === questionIndex ? { ...q, correctIndex: res.correctIndex, explanation: res.explanation } : q)),
+    );
+    if (res.isCorrect) {
+      setScore((prev) => prev + 1);
+    }
+    setRevealed(true);
   }
 
-  function handleNext(): void {
-    if (questionIndex < challengeQuestions.length - 1) {
+  async function handleNext(): Promise<void> {
+    if (questionIndex < questions.length - 1) {
       setQuestionIndex((prev) => prev + 1);
       setSelectedOption(null);
       setRevealed(false);
       return;
     }
 
-    const isPerfect = score === challengeQuestions.length;
-    dispatch(completeDailyChallenge({ xpEarned: earnedXp, isPerfect }));
+    const result = await completeDailyChallengeMutation({
+      answers: questions.map((q) => ({ questionId: q.id, selectedIndex: answers[q.id] })),
+    }).unwrap();
 
-    const badge: UnlockedBadge = isPerfect
-      ? { name: "Sharp Shooter", sym: "◎", xp: earnedXp }
-      : { name: "Streak Keeper", sym: "♦", xp: earnedXp };
-
-    setUnlockedBadge(badge);
+    setScore(result.correct);
+    setEarnedXp(result.xp.earned);
+    setResultStreak(result.streak.current);
     setState(ChallengeState.Done);
-    setUnlockOverlayOpen(true);
+
+    const firstUnlocked = result.unlockedBadges[0];
+    if (firstUnlocked) {
+      setUnlockedBadge({
+        name: firstUnlocked.name,
+        sym: firstUnlocked.symbol,
+        xp: result.xp.earned,
+        description: firstUnlocked.description,
+      });
+      setUnlockOverlayOpen(true);
+    }
   }
 
-  const resultTitle =
-    score === challengeQuestions.length ? "Flawless!" : "Challenge complete!";
+  const totalQuestions = questions.length || questionCount;
+  const resultTitle = score === totalQuestions ? "Flawless!" : "Challenge complete!";
   const resultSub =
-    score === challengeQuestions.length
-      ? `Perfect score — ${challengeQuestions.length}/${challengeQuestions.length} correct. You earned ${earnedXp} XP and extended your streak!`
-      : `You scored ${score}/${challengeQuestions.length} and earned ${earnedXp} XP. Keep it up — tomorrow's challenge awaits!`;
+    score === totalQuestions
+      ? `Perfect score — ${totalQuestions}/${totalQuestions} correct. You earned ${earnedXp} XP and extended your streak!`
+      : `You scored ${score}/${totalQuestions} and earned ${earnedXp} XP. Keep it up — tomorrow's challenge awaits!`;
 
   return {
     state,
@@ -118,10 +157,11 @@ export function useDailyChallengeSession() {
     unlockOverlayOpen,
     unlockedBadge,
     current,
+    totalQuestions,
     progress,
     resultTitle,
     resultSub,
-    dc,
+    dc: { ...dc, streak: state === ChallengeState.Done ? resultStreak : dc.streak },
     dateLabel,
     weekDays,
     isDoneToday,
@@ -132,6 +172,7 @@ export function useDailyChallengeSession() {
     earnedBadgeCount,
     badges,
     potentialXp,
+    questionCount,
     startChallenge,
     handleSelect,
     handleNext,

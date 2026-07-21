@@ -3,7 +3,8 @@ export type Permission =
   | "admin:processing:manage"
   | "admin:review:manage"
   | "admin:content:manage"
-  | "admin:agentLogs:view";
+  | "admin:agentLogs:view"
+  | "admin:users:manage";
 
 export type Role = "student" | "contentReviewer" | "admin" | "superAdmin";
 
@@ -15,10 +16,10 @@ export const ALL_ROLES: Role[] = [
 ];
 
 /**
- * Single source of truth for what each role can do. When real backend auth
- * lands, the server becomes authoritative and this map just mirrors it for
- * client-side UI gating (route guards, hidden nav items) — the shape stays
- * the same, only where `Session.roles` comes from changes.
+ * Single source of truth for what each role can do — mirrors the server's
+ * enforcement (RolesGuard in the backend) for client-side UI gating (route
+ * guards, hidden nav items). The server is always authoritative; this map
+ * only controls what the UI shows/allows before the request round-trips.
  */
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   student: [],
@@ -29,6 +30,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "admin:review:manage",
     "admin:content:manage",
     "admin:agentLogs:view",
+    "admin:users:manage",
   ],
   superAdmin: [
     "admin:overview:view",
@@ -36,8 +38,26 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "admin:review:manage",
     "admin:content:manage",
     "admin:agentLogs:view",
+    "admin:users:manage",
   ],
 };
+
+// Backend's Role enum (Prisma) has no SUPER_ADMIN counterpart yet, so it only
+// ever maps into "student" | "contentReviewer" | "admin" — "superAdmin" stays
+// a frontend-only concept until/unless the backend grows that role too.
+export type BackendRole = "STUDENT" | "REVIEWER" | "ADMIN";
+
+export function roleFromBackendRole(role: BackendRole): Role {
+  switch (role) {
+    case "ADMIN":
+      return "admin";
+    case "REVIEWER":
+      return "contentReviewer";
+    case "STUDENT":
+    default:
+      return "student";
+  }
+}
 
 export function permissionsForRoles(roles: Role[]): Permission[] {
   const permissions = new Set<Permission>();

@@ -1,27 +1,38 @@
-import { Box, Button, Paper, Switch, Typography } from "@mui/material";
+import { Alert, Box, Button, Paper, Switch, Typography } from "@mui/material";
 import { useMemo, useState } from "react";
 import {
+  useCompleteOnboardingMutation,
+  usePatchOnboardingMutation,
+  useSkipOnboardingMutation,
+} from "../../../../api/onboarding/onboarding.endpoints";
+import { toApiErrorMessage } from "../../../../api/error";
+import { useAppDispatch } from "../../../../store/hooks";
+import { onboardingMarkedComplete } from "../../../../store/slices/auth-slice";
+import {
+  CURRENT_LEVEL_LABELS,
   CURRENT_LEVEL_OPTIONS,
   DAILY_HOURS_OPTIONS,
   EXAM_GOAL_OPTIONS,
   ONBOARDING_STEPS,
   STUDY_TIMELINE_OPTIONS,
 } from "../../onboarding.constants";
-import type { CurrentLevel, StudyTimeline } from "../../onboarding.types";
+import type { CurrentLevel, DailyHours, StudyTimeline } from "../../onboarding.types";
 
-type OnboardingPageProps = {
-  onComplete: () => void;
-};
-
-export function OnboardingPage(props: OnboardingPageProps) {
-  const { onComplete } = props;
-
+export function OnboardingPage() {
   const [step, setStep] = useState(0);
   const [goal, setGoal] = useState("CSS");
-  const [timeline, setTimeline] = useState<StudyTimeline>("60 days");
-  const [dailyHours, setDailyHours] = useState(2);
-  const [level, setLevel] = useState<CurrentLevel>("Intermediate");
+  const [timeline, setTimeline] = useState<StudyTimeline>("3 months");
+  const [dailyHours, setDailyHours] = useState<DailyHours>("2h");
+  const [level, setLevel] = useState<CurrentLevel>("SOME_PREPARATION");
   const [diagnostic, setDiagnostic] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const dispatch = useAppDispatch();
+  const [patchOnboarding, { isLoading: isPatching }] = usePatchOnboardingMutation();
+  const [completeOnboarding, { isLoading: isCompleting }] = useCompleteOnboardingMutation();
+  const [skipOnboarding, { isLoading: isSkipping }] = useSkipOnboardingMutation();
+
+  const isBusy = isPatching || isCompleting || isSkipping;
 
   const examTags: Record<(typeof EXAM_GOAL_OPTIONS)[number], string> = {
     CSS: "Most popular",
@@ -36,13 +47,35 @@ export function OnboardingPage(props: OnboardingPageProps) {
     [dailyHours, diagnostic, goal, level, timeline],
   );
 
-  function handleContinue(): void {
-    if (step === ONBOARDING_STEPS.length - 1) {
-      onComplete();
-      return;
-    }
+  async function handleContinue(): Promise<void> {
+    setErrorMessage(null);
+    try {
+      if (step === 1) {
+        await patchOnboarding({ timeline, dailyHours }).unwrap();
+      } else if (step === 2) {
+        await patchOnboarding({ level, diagnosticOptIn: diagnostic }).unwrap();
+      }
 
-    setStep((previous) => Math.min(previous + 1, ONBOARDING_STEPS.length - 1));
+      if (step === ONBOARDING_STEPS.length - 1) {
+        await completeOnboarding().unwrap();
+        dispatch(onboardingMarkedComplete());
+        return;
+      }
+
+      setStep((previous) => Math.min(previous + 1, ONBOARDING_STEPS.length - 1));
+    } catch (error) {
+      setErrorMessage(toApiErrorMessage(error, "Couldn't save that — please try again."));
+    }
+  }
+
+  async function handleSkip(): Promise<void> {
+    setErrorMessage(null);
+    try {
+      await skipOnboarding().unwrap();
+      dispatch(onboardingMarkedComplete());
+    } catch (error) {
+      setErrorMessage(toApiErrorMessage(error, "Couldn't skip onboarding — please try again."));
+    }
   }
 
   function handleBack(): void {
@@ -263,6 +296,12 @@ export function OnboardingPage(props: OnboardingPageProps) {
               {step === 3 && "You can change these choices at any time in settings."}
             </Typography>
 
+            {errorMessage && (
+              <Alert severity="error" sx={{ mt: 2, borderRadius: "10px" }} onClose={() => setErrorMessage(null)}>
+                {errorMessage}
+              </Alert>
+            )}
+
             {step === 0 && (
               <Box
                 sx={{
@@ -396,7 +435,7 @@ export function OnboardingPage(props: OnboardingPageProps) {
                         px: 1.8,
                       }}
                     >
-                      {item}h/day
+                      {item}/day
                     </Button>
                   ))}
                 </Box>
@@ -419,7 +458,9 @@ export function OnboardingPage(props: OnboardingPageProps) {
                       bgcolor: level === item ? "#eef2f9" : "#fff",
                     }}
                   >
-                    <Typography sx={{ fontSize: 14.5, fontWeight: 600 }}>{item}</Typography>
+                    <Typography sx={{ fontSize: 14.5, fontWeight: 600 }}>
+                      {CURRENT_LEVEL_LABELS[item]}
+                    </Typography>
                   </Paper>
                 ))}
 
@@ -477,8 +518,8 @@ export function OnboardingPage(props: OnboardingPageProps) {
                   {[
                     { label: "Exam", value: summary.goal },
                     { label: "Timeline", value: summary.timeline },
-                    { label: "Daily study", value: `${summary.dailyHours}h/day` },
-                    { label: "Current level", value: summary.level },
+                    { label: "Daily study", value: `${summary.dailyHours}/day` },
+                    { label: "Current level", value: CURRENT_LEVEL_LABELS[summary.level] },
                     { label: "Diagnostic", value: summary.diagnostic ? "Enabled" : "Skipped" },
                   ].map((item, index) => (
                     <Box
@@ -506,7 +547,7 @@ export function OnboardingPage(props: OnboardingPageProps) {
             <Button
               variant="outlined"
               onClick={handleBack}
-              disabled={step === 0}
+              disabled={step === 0 || isBusy}
               sx={{
                 borderRadius: "12px",
                 borderWidth: "1.5px",
@@ -524,6 +565,7 @@ export function OnboardingPage(props: OnboardingPageProps) {
             <Button
               variant="contained"
               onClick={handleContinue}
+              disabled={isBusy}
               sx={{
                 flex: 1,
                 borderRadius: "12px",
@@ -536,13 +578,18 @@ export function OnboardingPage(props: OnboardingPageProps) {
                 "&:hover": { bgcolor: "#2a4478", boxShadow: "none" },
               }}
             >
-              {step === ONBOARDING_STEPS.length - 1 ? "Enter PrepAI" : "Continue"}
+              {isBusy
+                ? "Please wait…"
+                : step === ONBOARDING_STEPS.length - 1
+                  ? "Enter PrepAI"
+                  : "Continue"}
             </Button>
           </Box>
 
           <Button
             variant="text"
-            onClick={onComplete}
+            onClick={handleSkip}
+            disabled={isBusy}
             sx={{
               mt: 1.5,
               alignSelf: "center",

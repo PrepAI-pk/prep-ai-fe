@@ -1,8 +1,12 @@
-import type { NotificationPrefs } from "../../app/settings-persistence";
+import type {
+  BackendDigestFreq,
+  NotifCategoryKey,
+  NotifChannelKey,
+} from "../../api/me/me.types";
 
-export type NotificationChannelKey = keyof NotificationPrefs["nsChannels"];
-export type NotificationCategoryKey = keyof NotificationPrefs["notif"];
-export type NotificationDigest = NotificationPrefs["nsDigest"];
+export type NotificationChannelKey = NotifChannelKey;
+export type NotificationCategoryKey = NotifCategoryKey;
+export type NotificationDigest = BackendDigestFreq;
 
 export type NotificationChannelRow = {
   key: NotificationChannelKey;

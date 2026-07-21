@@ -1,5 +1,3 @@
-import type { AdminDocument } from "../../admin.types";
-
 export const adminProcessingStyles = {
   wrap: { maxWidth: 1000, mx: "auto", display: "grid", gap: 1.2 },
   uploadCard: {
@@ -89,7 +87,7 @@ export const stageDotToneSx = (stageDone: boolean, active: boolean) => ({
   bgcolor: stageDone ? "success.main" : active ? "primary.main" : "text.disabled",
 });
 
-export const docStatusToneSx = (status: AdminDocument["status"]) => ({
+export const docStatusToneSx = (status: string) => ({
   bgcolor:
     status === "published"
       ? "success.light"
@@ -97,7 +95,9 @@ export const docStatusToneSx = (status: AdminDocument["status"]) => ({
         ? "primary.light"
         : status === "processing"
           ? "warning.light"
-          : "background.default",
+          : status === "failed"
+            ? "error.light"
+            : "background.default",
   color:
     status === "published"
       ? "success.main"
@@ -105,5 +105,7 @@ export const docStatusToneSx = (status: AdminDocument["status"]) => ({
         ? "primary.main"
         : status === "processing"
           ? "warning.main"
-          : "text.disabled",
+          : status === "failed"
+            ? "error.main"
+            : "text.disabled",
 });

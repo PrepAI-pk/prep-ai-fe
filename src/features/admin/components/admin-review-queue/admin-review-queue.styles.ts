@@ -1,5 +1,3 @@
-import type { AdminDraft } from "../../admin.types";
-
 export const adminReviewQueueStyles = {
   wrap: { maxWidth: 820, mx: "auto", display: "grid", gap: 2 },
   intro: { color: "text.secondary", fontSize: 13.5, mb: 0.3 },
@@ -62,7 +60,7 @@ export const adminReviewQueueStyles = {
   actions: { mt: "16px", display: "flex", gap: "10px", flexWrap: "wrap" },
 };
 
-export const difficultyToneSx = (difficulty: AdminDraft["difficulty"]) => ({
+export const difficultyToneSx = (difficulty: string) => ({
   color: difficulty === "Easy" ? "success.main" : difficulty === "Hard" ? "error.main" : "secondary.main",
 });
 

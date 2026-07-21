@@ -193,7 +193,26 @@ export const mockExamsStyles = {
   resultReviewId: { fontSize: 12, color: "text.secondary" },
   resultReviewSubject: { fontSize: 12 },
   resultActions: { display: "flex", gap: 1, flexWrap: "wrap" },
+  recentAttemptsTitle: { fontWeight: 700, mt: 3, mb: 1.2 },
+  recentAttemptRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    p: 1.4,
+    borderRadius: "12px",
+    borderColor: "divider",
+    mb: 1,
+  },
+  recentAttemptExam: { fontSize: 13.5, fontWeight: 600 },
+  recentAttemptMeta: { fontSize: 12, color: "text.secondary", mt: 0.2 },
 } as const;
+
+export const recentAttemptScoreSx = (pct: number) => ({
+  fontFamily: '"Space Mono", monospace',
+  fontSize: 14,
+  fontWeight: 700,
+  color: pct >= 70 ? "success.main" : pct < 40 ? "error.main" : "text.primary",
+});
 
 export const runnerOptionCardSx = (selected: boolean) => ({
   p: "15px 17px",

@@ -11,21 +11,24 @@ import {
   quizProgressFillSx,
   revealBannerSx,
 } from "./play-status.utils";
-import { XP_CORRECT } from "../../daily-challenge.constants";
 import type { PlayStatusProps } from "./play-status.types";
+
+// Mirrors the backend's XP_BASE_PER_CORRECT (packages/contracts) — the
+// per-question amount /daily-challenge/answer awards for a correct pick.
+const XP_CORRECT = 10;
 
 const PlayStatusComponent = ({
   progress,
   current,
   questionIndex,
-  challengeQuestions,
+  totalQuestions,
   selectedOption,
   revealed,
   handleSelect,
   handleNext,
 }: PlayStatusProps) => {
-  const isNextButton = questionIndex < challengeQuestions.length - 1;
-  const quizCounter = `Q ${questionIndex + 1}/${challengeQuestions.length}`;
+  const isNextButton = questionIndex < totalQuestions - 1;
+  const quizCounter = `Q ${questionIndex + 1}/${totalQuestions}`;
   const isAnswerCorrect = selectedOption === current.correctIndex;
   return (
     <>

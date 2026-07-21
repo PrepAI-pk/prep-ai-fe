@@ -1,20 +1,54 @@
 import { prepaiApi } from "../baseApi";
-import type { MockExam } from "./mock-exams.types";
+import type {
+  Exam,
+  ExamResult,
+  PatchAttemptAnswersPayload,
+  RecentAttempt,
+  ResumeAttemptResponse,
+  StartAttemptResponse,
+} from "./mock-exams.types";
 
 export const mockExamsApi = prepaiApi.injectEndpoints({
   endpoints: (builder) => ({
-    getMockExams: builder.query<MockExam[], number | void>({
-      query: (limit = 20) => `/mock-exams?limit=${limit}`,
-      providesTags: (result) =>
-        result
-          ? [
-              ...result.map((exam) => ({ type: "MockExam" as const, id: exam.id })),
-              { type: "MockExam" as const, id: "LIST" },
-            ]
-          : [{ type: "MockExam" as const, id: "LIST" }],
+    getExams: builder.query<Exam[], void>({
+      query: () => "/exams",
+      transformResponse: (response: { items: Exam[] }) => response.items,
+    }),
+    getRecentAttempts: builder.query<RecentAttempt[], void>({
+      query: () => "/exam-attempts/recent",
+      transformResponse: (response: { items: RecentAttempt[] }) => response.items,
+      providesTags: [{ type: "MockExam" as const, id: "RECENT" }],
+    }),
+    startAttempt: builder.mutation<StartAttemptResponse, string>({
+      query: (examId) => ({ url: `/exams/${examId}/attempts`, method: "POST" }),
+    }),
+    getAttempt: builder.query<ResumeAttemptResponse, string>({
+      query: (attemptId) => `/exam-attempts/${attemptId}`,
+    }),
+    patchAttemptAnswers: builder.mutation<{ success: true }, PatchAttemptAnswersPayload>({
+      query: ({ attemptId, ...body }) => ({
+        url: `/exam-attempts/${attemptId}/answers`,
+        method: "PATCH",
+        body,
+      }),
+    }),
+    submitAttempt: builder.mutation<ExamResult, string>({
+      query: (attemptId) => ({ url: `/exam-attempts/${attemptId}/submit`, method: "POST" }),
+      invalidatesTags: [{ type: "MockExam" as const, id: "RECENT" }],
+    }),
+    getResult: builder.query<ExamResult, string>({
+      query: (attemptId) => `/exam-attempts/${attemptId}/result`,
     }),
   }),
   overrideExisting: true,
 });
 
-export const { useGetMockExamsQuery } = mockExamsApi;
+export const {
+  useGetExamsQuery,
+  useGetRecentAttemptsQuery,
+  useStartAttemptMutation,
+  useGetAttemptQuery,
+  usePatchAttemptAnswersMutation,
+  useSubmitAttemptMutation,
+  useGetResultQuery,
+} = mockExamsApi;

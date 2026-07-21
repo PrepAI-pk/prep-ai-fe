@@ -1,8 +1,5 @@
-import type {
-  CheckPracticeAnswerResponse,
-  PracticeQuestion,
-} from "../../api/practice/practice.types";
-import type { BookmarkMap, OptionVisualStyle } from "./practice.types";
+import type { PracticeAnswerResponse } from "../../api/practice/practice.types";
+import type { OptionVisualStyle } from "./practice.types";
 
 const defaultOptionStyle: OptionVisualStyle = {
   borderColor: "divider",
@@ -13,30 +10,6 @@ const defaultOptionStyle: OptionVisualStyle = {
     color: "text.primary",
   },
 };
-
-export function deriveSubjects(questions: PracticeQuestion[]): string[] {
-  const uniqueSubjects = Array.from(new Set(questions.map((q) => q.subject))).sort();
-  return ["All", ...uniqueSubjects];
-}
-
-export function filterQuestionsBySubject(
-  questions: PracticeQuestion[],
-  selectedSubject: string,
-): PracticeQuestion[] {
-  if (selectedSubject === "All") {
-    return questions;
-  }
-
-  return questions.filter((question) => question.subject === selectedSubject);
-}
-
-export function getProgressValue(currentIndex: number, total: number): number {
-  if (total <= 0) {
-    return 0;
-  }
-
-  return ((currentIndex + 1) / total) * 100;
-}
 
 export function getDifficultyColor(difficulty: string): string {
   const normalized = difficulty.toLowerCase();
@@ -54,14 +27,14 @@ export function getDifficultyColor(difficulty: string): string {
 
 export function getOptionVisualStyle(
   index: number,
-  checkResult: CheckPracticeAnswerResponse | undefined,
+  checkResult: PracticeAnswerResponse | undefined,
+  selectedIndex: number | null,
 ): OptionVisualStyle {
   if (!checkResult) {
     return defaultOptionStyle;
   }
 
-  const correctIndex = checkResult.correctIndex;
-  const selectedIndex = checkResult.selectedIndex;
+  const { correctIndex } = checkResult;
 
   if (index === correctIndex) {
     return {
@@ -102,14 +75,14 @@ export function getOptionVisualStyle(
 
 export function getOptionMark(
   index: number,
-  checkResult: CheckPracticeAnswerResponse | undefined,
+  checkResult: PracticeAnswerResponse | undefined,
+  selectedIndex: number | null,
 ): string {
   if (!checkResult) {
     return "";
   }
 
-  const correctIndex = checkResult.correctIndex;
-  const selectedIndex = checkResult.selectedIndex;
+  const { correctIndex } = checkResult;
 
   if (index === correctIndex) {
     return "Correct";
@@ -122,12 +95,13 @@ export function getOptionMark(
   return "";
 }
 
-export function toggleBookmarkState(
-  questionId: number,
-  bookmarks: BookmarkMap,
-): BookmarkMap {
-  return {
-    ...bookmarks,
-    [questionId]: !bookmarks[questionId],
-  };
+// Daily-limit usage as a progress bar — Free tier's 20/day cap doubles as the
+// practice session's sense of "how far along am I today" (Pro/Elite are
+// unlimited, so the bar reads full).
+export function getUsageProgressValue(answeredToday: number, dailyLimit: number | null): number {
+  if (dailyLimit === null || dailyLimit <= 0) {
+    return 100;
+  }
+
+  return Math.min(100, (answeredToday / dailyLimit) * 100);
 }

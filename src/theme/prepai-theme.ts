@@ -149,6 +149,4 @@ export function buildPrepaiTheme(prefs: UiPrefs) {
 export const prepaiTheme = buildPrepaiTheme({
   theme: "light",
   accent: "indigo",
-  defaultDifficulty: "Medium",
-  language: "English",
 });

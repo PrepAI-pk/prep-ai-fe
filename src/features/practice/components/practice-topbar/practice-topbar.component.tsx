@@ -8,9 +8,21 @@ import {
   Popover,
   Typography,
 } from "@mui/material";
-import { useEffect, useMemo, useState, type MouseEvent } from "react";
+import { useMemo, useState, type MouseEvent } from "react";
+import {
+  useGetNotificationsQuery,
+  useMarkAllNotificationsReadMutation,
+  useMarkNotificationReadMutation,
+} from "../../../../api/notifications/notifications.endpoints";
+import type { NotificationItem } from "../../../../api/notifications/notifications.types";
+import {
+  useGetNotificationPreferencesQuery,
+  useGetPreferencesQuery,
+  useUpdatePreferencesMutation,
+} from "../../../../api/me/me.endpoints";
+import type { BackendAccent, NotifCategoryKey } from "../../../../api/me/me.types";
 import type { AppScreen } from "../../../../app/screens";
-import { readNotifPrefs, readUiPrefs, writeUiPrefs } from "../../../../app/settings-persistence";
+import { readUiPrefs } from "../../../../app/settings-persistence";
 
 type PracticeTopbarProps = {
   title?: string;
@@ -23,86 +35,34 @@ type PracticeTopbarProps = {
   currentScreen?: AppScreen;
 };
 
-type TopbarNotification = {
-  id: string;
-  icon: string;
-  tone: "p" | "a" | "g";
-  time: string;
-  title: string;
-  note: string;
-  screen: AppScreen;
-  read: boolean;
-  category: "mockResults" | "streak" | "badges" | "newContent" | "plan" | "payments";
+// Notification.category comes back UPPERCASE from the API; the preferences
+// toggles (me.types.ts NotifCategoryKey) are lowercase — one shared map keeps
+// the two vocabularies from silently drifting apart.
+const CATEGORY_TO_PREF_KEY: Record<NotificationItem["category"], NotifCategoryKey> = {
+  REMINDER: "reminder",
+  STREAK: "streak",
+  CONTENT: "content",
+  LEADERBOARD: "leaderboard",
+  RESULTS: "results",
 };
 
-const initialNotifications: TopbarNotification[] = [
-  {
-    id: "n1",
-    icon: "◎",
-    tone: "p",
-    time: "5m ago",
-    title: "Mock exam scored",
-    note: "Your FIA Assistant Director mock is ready - 72/100, Top 9%. Review the analysis.",
-    screen: "mockExams",
-    read: false,
-    category: "mockResults",
-  },
-  {
-    id: "n2",
-    icon: "🔥",
-    tone: "a",
-    time: "2h ago",
-    title: "Keep your streak alive",
-    note: "You're 1 daily challenge away from a 13-day streak. It resets at midnight.",
-    screen: "dailyChallenge",
-    read: false,
-    category: "streak",
-  },
-  {
-    id: "n3",
-    icon: "★",
-    tone: "a",
-    time: "6h ago",
-    title: "Badge unlocked: Top 100",
-    note: "You broke into the national top 100 this week. See where you rank.",
-    screen: "leaderboard",
-    read: false,
-    category: "badges",
-  },
-  {
-    id: "n4",
-    icon: "＋",
-    tone: "p",
-    time: "Yesterday",
-    title: "New MCQs added",
-    note: "42 new Current Affairs (June 2026) questions are live for your exam.",
-    screen: "mcqLibrary",
-    read: true,
-    category: "newContent",
-  },
-  {
-    id: "n5",
-    icon: "◷",
-    tone: "p",
-    time: "Yesterday",
-    title: "Today's plan is ready",
-    note: "A full mock and a weak-areas review are scheduled for Saturday.",
-    screen: "studyPlan",
-    read: true,
-    category: "plan",
-  },
-  {
-    id: "n6",
-    icon: "✓",
-    tone: "g",
-    time: "3 days ago",
-    title: "Payment received",
-    note: "Your PrepAI Pro plan renewed successfully. Next billing 1 Aug 2026.",
-    screen: "settingsProfile",
-    read: true,
-    category: "payments",
-  },
-];
+// Notification.targetRef is a free-form "go" string set by whatever backend
+// flow created the row (exam-attempts, daily-challenge, badges, …) — mapped
+// onto a concrete screen here, with dashboard as the safe fallback for
+// targetRefs that don't (yet) have a dedicated screen (e.g. "badges").
+const TARGET_REF_TO_SCREEN: Record<string, AppScreen> = {
+  mockExams: "mockExams",
+  dailyChallenge: "dailyChallenge",
+  dashboard: "dashboard",
+  leaderboard: "leaderboard",
+  studyPlan: "studyPlan",
+  mcqLibrary: "mcqLibrary",
+  settingsProfile: "settingsProfile",
+};
+
+function targetRefToScreen(targetRef: string | null): AppScreen {
+  return (targetRef && TARGET_REF_TO_SCREEN[targetRef]) || "dashboard";
+}
 
 export function PracticeTopbar(props: PracticeTopbarProps) {
   const {
@@ -123,41 +83,32 @@ export function PracticeTopbar(props: PracticeTopbarProps) {
     currentScreen === "adminContentManager" ||
     currentScreen === "adminAgentLogs";
 
-  const [notifications, setNotifications] = useState<TopbarNotification[]>(initialNotifications);
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
-  const [notifPrefs, setNotifPrefs] = useState(() => readNotifPrefs());
-  const [uiPrefs, setUiPrefs] = useState(() => readUiPrefs());
+  const { data: notifPrefs } = useGetNotificationPreferencesQuery();
+  const { data: serverUiPrefs } = useGetPreferencesQuery();
+  const [updatePreferences] = useUpdatePreferencesMutation();
+  const { data: notificationsData } = useGetNotificationsQuery(
+    { pageSize: 20 },
+    { pollingInterval: 60_000 },
+  );
+  const [markNotificationRead] = useMarkNotificationReadMutation();
+  const [markAllNotificationsRead] = useMarkAllNotificationsReadMutation();
 
-  useEffect(() => {
-    function syncNotifPrefs(): void {
-      setNotifPrefs(readNotifPrefs());
-    }
+  // Falls back to the paint-cache value until the query resolves (same
+  // pattern as DynamicThemeApp).
+  const uiPrefs = serverUiPrefs
+    ? { theme: serverUiPrefs.theme === "DARK" ? ("dark" as const) : ("light" as const), accent: serverUiPrefs.accent.toLowerCase() as "indigo" | "emerald" | "plum" }
+    : readUiPrefs();
 
-    function syncUiPrefs(): void {
-      setUiPrefs(readUiPrefs());
-    }
-
-    window.addEventListener("storage", syncNotifPrefs);
-    window.addEventListener("prepai-notif-prefs-updated", syncNotifPrefs as EventListener);
-    window.addEventListener("storage", syncUiPrefs);
-    window.addEventListener("prepai-ui-prefs-updated", syncUiPrefs as EventListener);
-
-    return () => {
-      window.removeEventListener("storage", syncNotifPrefs);
-      window.removeEventListener("prepai-notif-prefs-updated", syncNotifPrefs as EventListener);
-      window.removeEventListener("storage", syncUiPrefs);
-      window.removeEventListener("prepai-ui-prefs-updated", syncUiPrefs as EventListener);
-    };
-  }, []);
-
+  const notifications = notificationsData?.items ?? [];
   const visibleNotifications = useMemo(
-    () => notifications.filter((item) => notifPrefs.notif[item.category]),
-    [notifications, notifPrefs.notif],
+    () => notifications.filter((item) => !notifPrefs || notifPrefs.categories[CATEGORY_TO_PREF_KEY[item.category]]),
+    [notifications, notifPrefs],
   );
-  const unreadCount = useMemo(
-    () => visibleNotifications.filter((item) => !item.read).length,
-    [visibleNotifications],
-  );
+  // The bell badge counts every unread notification server-side, regardless
+  // of the category filters applied to the dropdown list below — matches
+  // API.md's `unreadCount` being the authoritative total.
+  const unreadCount = notificationsData?.unreadCount ?? 0;
 
   function openNotifications(event: MouseEvent<HTMLElement>): void {
     setAnchorEl(event.currentTarget);
@@ -168,7 +119,7 @@ export function PracticeTopbar(props: PracticeTopbarProps) {
   }
 
   function markAllRead(): void {
-    setNotifications((previous) => previous.map((item) => ({ ...item, read: true })));
+    void markAllNotificationsRead();
   }
 
   function openNotificationSettings(): void {
@@ -181,35 +132,22 @@ export function PracticeTopbar(props: PracticeTopbarProps) {
     onNavigateScreen?.("notificationSettings");
   }
 
-  function clickNotification(notification: TopbarNotification): void {
-    setNotifications((previous) =>
-      previous.map((item) =>
-        item.id === notification.id
-          ? {
-              ...item,
-              read: true,
-            }
-          : item,
-      ),
-    );
+  function clickNotification(notification: NotificationItem): void {
+    if (notification.unread) {
+      void markNotificationRead(notification.id);
+    }
 
     closeNotifications();
 
-    onNavigateScreen?.(notification.screen);
+    onNavigateScreen?.(targetRefToScreen(notification.targetRef));
   }
 
   function updateAccent(accent: "indigo" | "emerald" | "plum"): void {
-    writeUiPrefs({
-      ...uiPrefs,
-      accent,
-    });
+    void updatePreferences({ accent: accent.toUpperCase() as BackendAccent });
   }
 
   function toggleTheme(): void {
-    writeUiPrefs({
-      ...uiPrefs,
-      theme: uiPrefs.theme === "light" ? "dark" : "light",
-    });
+    void updatePreferences({ theme: uiPrefs.theme === "light" ? "DARK" : "LIGHT" });
   }
 
   const themeLabel = uiPrefs.theme === "dark" ? "Dark" : "Light";
@@ -412,7 +350,7 @@ export function PracticeTopbar(props: PracticeTopbarProps) {
                   p: "14px 16px",
                   borderRadius: "12px",
                   cursor: "pointer",
-                  backgroundColor: item.read ? "transparent" : "primary.light",
+                  backgroundColor: item.unread ? "primary.light" : "transparent",
                   "&:hover": { backgroundColor: "background.default" },
                 }}
               >
@@ -430,14 +368,14 @@ export function PracticeTopbar(props: PracticeTopbarProps) {
                     color: toneMap[item.tone].fg,
                   }}
                 >
-                  {item.icon}
+                  {item.icon ?? "•"}
                 </Box>
                 <Box sx={{ flex: 1, minWidth: 0 }}>
                   <Box sx={{ display: "flex", gap: "8px", alignItems: "flex-start" }}>
-                    <Typography sx={{ flex: 1, fontWeight: item.read ? 600 : 700, fontSize: 13.5, lineHeight: 1.3 }}>{item.title}</Typography>
-                    {!item.read && <Box sx={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: "primary.main", flex: "none", mt: "5px" }} />}
+                    <Typography sx={{ flex: 1, fontWeight: item.unread ? 700 : 600, fontSize: 13.5, lineHeight: 1.3 }}>{item.title}</Typography>
+                    {item.unread && <Box sx={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: "primary.main", flex: "none", mt: "5px" }} />}
                   </Box>
-                  <Typography sx={{ fontSize: 12.5, color: "text.secondary", lineHeight: 1.45, mt: "2px" }}>{item.note}</Typography>
+                  <Typography sx={{ fontSize: 12.5, color: "text.secondary", lineHeight: 1.45, mt: "2px" }}>{item.body}</Typography>
                   <Typography sx={{ fontSize: 11, color: "text.disabled", fontFamily: '"Space Mono", monospace', mt: "5px" }}>{item.time}</Typography>
                 </Box>
               </Box>

@@ -9,18 +9,29 @@ import { practiceUiReducer } from "../../store/slices/practice-Ui-slice";
 import { prepaiTheme } from "../../theme/prepai-theme";
 import { PracticePage } from "./practice";
 
-const sampleQuestions = [
-  {
-    id: 1,
-    subject: "CSS",
-    difficulty: "Medium",
-    questionText: "Which article defines Objectives Resolution principles?",
-    options: ["Article 2", "Article 2A", "Article 25", "Article 62"],
-    explanation: "Article 2A incorporates Objectives Resolution.",
-    createdAt: "2026-01-01T00:00:00.000Z",
-    updatedAt: "2026-01-01T00:00:00.000Z",
-  },
+const sampleSubjects = [
+  { id: "s1", slug: "pak-constitution", name: "Pak Constitution", colorTint: null, order: 0 },
 ];
+
+const sampleNextQuestion = {
+  id: "q1",
+  subject: { name: "Pak Constitution" },
+  difficulty: "MEDIUM",
+  questionText: "Which article defines Objectives Resolution principles?",
+  options: ["Article 2", "Article 2A", "Article 25", "Article 62"],
+  isBookmarked: false,
+  usage: { answeredToday: 0, dailyLimit: 20, resetsAt: "2026-01-02T00:00:00.000Z" },
+};
+
+const sampleAnswerResponse = {
+  isCorrect: true,
+  correctIndex: 1,
+  explanation: "Article 2A incorporates Objectives Resolution.",
+  provenance: null,
+  xpEarned: 5,
+  streak: { current: 1, extendedToday: true },
+  subjectStat: { subjectId: "s1", acc: 100, attempted: 1 },
+};
 
 function setupMockFetch() {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -34,27 +45,25 @@ function setupMockFetch() {
       init?.method ??
       (typeof input === "string" || input instanceof URL ? "GET" : input.method);
 
-    if (url.includes("/questions?")) {
-      return new Response(JSON.stringify(sampleQuestions), {
+    if (url.includes("/subjects") && method === "GET") {
+      return new Response(JSON.stringify(sampleSubjects), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
     }
 
-    if (url.includes("/questions/1/check") && method === "POST") {
-      return new Response(
-        JSON.stringify({
-          questionId: 1,
-          selectedIndex: 1,
-          isCorrect: true,
-          explanation: "Article 2A incorporates Objectives Resolution.",
-          correctIndex: 1,
-        }),
-        {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        },
-      );
+    if (url.includes("/practice/next") && method === "GET") {
+      return new Response(JSON.stringify(sampleNextQuestion), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (url.includes("/practice/answer") && method === "POST") {
+      return new Response(JSON.stringify(sampleAnswerResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     return new Response(JSON.stringify({ message: `Unhandled URL: ${url}` }), {
@@ -97,7 +106,7 @@ describe("PracticePage", () => {
     vi.unstubAllGlobals();
   });
 
-  it("reveals answer flow and does not refetch questions on check", async () => {
+  it("reveals answer flow and does not refetch the question on check", async () => {
     const fetchMock = setupMockFetch();
     const user = userEvent.setup();
 
@@ -128,14 +137,14 @@ describe("PracticePage", () => {
           ? input.toString()
           : input.url;
 
-    const questionCalls = fetchMock.mock.calls.filter((call) =>
-      extractUrl(call[0] as RequestInfo | URL).includes("/questions?"),
+    const nextCalls = fetchMock.mock.calls.filter((call) =>
+      extractUrl(call[0] as RequestInfo | URL).includes("/practice/next"),
     );
-    const checkCalls = fetchMock.mock.calls.filter((call) =>
-      extractUrl(call[0] as RequestInfo | URL).includes("/questions/1/check"),
+    const answerCalls = fetchMock.mock.calls.filter((call) =>
+      extractUrl(call[0] as RequestInfo | URL).includes("/practice/answer"),
     );
 
-    expect(questionCalls.length).toBe(1);
-    expect(checkCalls.length).toBe(1);
+    expect(nextCalls.length).toBe(1);
+    expect(answerCalls.length).toBe(1);
   }, 15000);
 });
