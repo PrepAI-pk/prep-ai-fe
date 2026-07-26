@@ -1,6 +1,7 @@
 import { prepaiApi } from "../baseApi";
 import type {
   CourseResponse,
+  CoursesResponse,
   LessonProgressResponse,
   LessonResponse,
   TranscriptResponse,
@@ -19,6 +20,10 @@ function buildQueryString(params: Record<string, string | number | undefined>): 
 
 export const videoLessonsApi = prepaiApi.injectEndpoints({
   endpoints: (builder) => ({
+    listCourses: builder.query<CoursesResponse, void>({
+      query: () => "/courses",
+      providesTags: ["VideoLessons"],
+    }),
     getCourse: builder.query<CourseResponse, string>({
       query: (courseId) => `/courses/${courseId}`,
       providesTags: ["VideoLessons"],
@@ -52,6 +57,7 @@ export const videoLessonsApi = prepaiApi.injectEndpoints({
 });
 
 export const {
+  useListCoursesQuery,
   useGetCourseQuery,
   useGetLessonQuery,
   useGetTranscriptQuery,

@@ -14,7 +14,7 @@ import {
   PracticePage,
   StudyPlanPage,
   SubscriptionPaywallPage,
-  VideoLessonsPage,
+  VideoLessonsCatalogPage,
 } from "../../pages";
 import { useScreenNavigate } from "../useScreenNavigation";
 
@@ -54,7 +54,7 @@ export function LeaderboardRoute() {
 }
 
 export function VideoLessonsRoute() {
-  return <VideoLessonsPage onNavigateScreen={useScreenNavigate()} />;
+  return <VideoLessonsCatalogPage onNavigateScreen={useScreenNavigate()} />;
 }
 
 export function BookmarksWeakAreasRoute() {

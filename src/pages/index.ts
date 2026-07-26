@@ -22,4 +22,4 @@ export { PracticePage } from "./practice/practice";
 export { SettingsProfilePage } from "./settings/settings-profile";
 export { StudyPlanPage } from "./studyPlan/study-plan";
 export { SubscriptionPaywallPage } from "./subscription/subscription-paywall";
-export { VideoLessonsPage } from "./videoLessons/video-lessons";
+export { VideoLessonsPage, VideoLessonsCatalogPage } from "./videoLessons/video-lessons";

@@ -1,1 +1,1 @@
-export { VideoLessonsPage } from "../../features/videoLessons";
+export { VideoLessonsPage, VideoLessonsCatalogPage } from "../../features/videoLessons";
