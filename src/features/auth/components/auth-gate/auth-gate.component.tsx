@@ -1,7 +1,19 @@
 import Google from "@mui/icons-material/Google";
-import { Alert, Box, Button, MenuItem, TextField, Typography } from "@mui/material";
+import {
+  Alert,
+  Box,
+  Button,
+  GlobalStyles,
+  MenuItem,
+  TextField,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
+} from "@mui/material";
 import { useState } from "react";
-import type { AuthSuccessResponse, Gender } from "../../../../api/auth/auth.types";
+import PhoneInput from "react-phone-number-input";
+import "react-phone-number-input/style.css";
+import type { AuthSuccessResponse, Gender, OtpChannel } from "../../../../api/auth/auth.types";
 import {
   useGoogleAuthMutation,
   useLoginMutation,
@@ -21,7 +33,47 @@ const GENDER_OPTIONS: { value: Gender; label: string }[] = [
   { value: "PREFER_NOT_TO_SAY", label: "Prefer not to say" },
 ];
 
+const OTP_CHANNEL_OPTIONS: { value: OtpChannel; label: string }[] = [
+  { value: "EMAIL", label: "Email" },
+  { value: "SMS", label: "Text" },
+  { value: "BOTH", label: "Both" },
+];
+
 const textFieldSx = { "& .MuiOutlinedInput-root": { borderRadius: "12px", background: "#fff" } };
+
+// react-phone-number-input renders its own markup (no MUI styling hook), so
+// this restyles it to match the surrounding TextFields instead of leaving
+// the library's default look.
+const phoneInputGlobalStyles = (
+  <GlobalStyles
+    styles={{
+      ".PhoneInput": {
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        border: "1px solid rgba(0,0,0,0.23)",
+        borderRadius: "12px",
+        background: "#fff",
+        padding: "0 12px",
+        height: "56px",
+      },
+      ".PhoneInput:focus-within": {
+        border: "2px solid #33508c",
+        padding: "0 11px",
+      },
+      ".PhoneInputCountry": { marginRight: 4 },
+      ".PhoneInputInput": {
+        border: "none",
+        outline: "none",
+        flex: 1,
+        height: "100%",
+        fontSize: "1rem",
+        fontFamily: "inherit",
+        background: "transparent",
+      },
+    }}
+  />
+);
 
 export function AuthGate() {
   const [authMode, setAuthMode] = useState<AuthMode>("signup");
@@ -31,6 +83,7 @@ export function AuthGate() {
   const [phone, setPhone] = useState("");
   const [city, setCity] = useState("");
   const [gender, setGender] = useState<Gender | "">("");
+  const [otpChannel, setOtpChannel] = useState<OtpChannel>("EMAIL");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Set once registration succeeds but the account isn't verified yet — its
@@ -41,6 +94,10 @@ export function AuthGate() {
   const [pendingAuth, setPendingAuth] = useState<AuthSuccessResponse | null>(null);
   const [otpCode, setOtpCode] = useState("");
   const [resendNotice, setResendNotice] = useState<string | null>(null);
+  // Only ever set from a response's `devOtp` field, which the backend only
+  // populates outside production (no email/SMS provider may be configured
+  // there) — this is what lets you finish the flow without either.
+  const [devOtpHint, setDevOtpHint] = useState<string | null>(null);
 
   const dispatch = useAppDispatch();
   const [register, { isLoading: isRegistering }] = useRegisterMutation();
@@ -62,12 +119,15 @@ export function AuthGate() {
           phone: phone.trim(),
           city: city.trim(),
           gender: gender || undefined,
+          otpChannel,
         }).unwrap();
 
         if (result.user.emailVerifiedAt) {
           dispatch(authSucceeded(result));
         } else {
           setPendingAuth(result);
+          setDevOtpHint(result.devOtp ?? null);
+          setOtpCode(result.devOtp ?? "");
         }
         return;
       }
@@ -113,8 +173,12 @@ export function AuthGate() {
     setErrorMessage(null);
     setResendNotice(null);
     try {
-      await resendVerification({ email }).unwrap();
+      const result = await resendVerification({ email, channel: otpChannel }).unwrap();
       setResendNotice("A new code is on its way.");
+      setDevOtpHint(result.devOtp ?? null);
+      if (result.devOtp) {
+        setOtpCode(result.devOtp);
+      }
     } catch (error) {
       setErrorMessage(toApiErrorMessage(error, "Couldn't resend the code. Please try again."));
     }
@@ -129,6 +193,7 @@ export function AuthGate() {
         background: "#f5f2ec",
       }}
     >
+      {phoneInputGlobalStyles}
       <Box
         sx={{
           width: { xs: "100%", md: "40%" },
@@ -291,6 +356,13 @@ export function AuthGate() {
 
           {pendingAuth ? (
             <Box sx={{ mt: 3, display: "grid", gap: 1.4 }}>
+              {devOtpHint && (
+                <Alert severity="info" sx={{ borderRadius: "10px" }}>
+                  No email/SMS provider is configured on this server yet — your dev-only code is{" "}
+                  <strong>{devOtpHint}</strong> (pre-filled below).
+                </Alert>
+              )}
+
               <TextField
                 placeholder="6-digit code"
                 value={otpCode}
@@ -391,12 +463,13 @@ export function AuthGate() {
 
                 {authMode === "signup" && (
                   <>
-                    <TextField
+                    <PhoneInput
+                      international
+                      defaultCountry="PK"
                       placeholder="Phone number"
                       value={phone}
-                      onChange={(event) => setPhone(event.target.value)}
+                      onChange={(value) => setPhone(value ?? "")}
                       disabled={isSubmitting}
-                      sx={textFieldSx}
                     />
                     <TextField
                       placeholder="City"
@@ -420,6 +493,36 @@ export function AuthGate() {
                         </MenuItem>
                       ))}
                     </TextField>
+
+                    <Box>
+                      <Typography sx={{ fontSize: 12.5, color: "#5f6675", mb: 0.6 }}>
+                        Send the verification code via
+                      </Typography>
+                      <ToggleButtonGroup
+                        exclusive
+                        value={otpChannel}
+                        onChange={(_event, value: OtpChannel | null) => value && setOtpChannel(value)}
+                        disabled={isSubmitting}
+                        sx={{
+                          "& .MuiToggleButton-root": {
+                            textTransform: "none",
+                            borderRadius: "10px !important",
+                            border: "1.5px solid #e8e3d9 !important",
+                            px: 1.8,
+                            py: 0.6,
+                            fontWeight: 600,
+                            color: "#5f6675",
+                            "&.Mui-selected": { bgcolor: "#33508c", color: "#fff" },
+                          },
+                        }}
+                      >
+                        {OTP_CHANNEL_OPTIONS.map((option) => (
+                          <ToggleButton key={option.value} value={option.value}>
+                            {option.label}
+                          </ToggleButton>
+                        ))}
+                      </ToggleButtonGroup>
+                    </Box>
                   </>
                 )}
 

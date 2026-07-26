@@ -32,10 +32,10 @@ export const authApi = prepaiApi.injectEndpoints({
     verifyEmail: builder.mutation<{ success: true }, VerifyEmailPayload>({
       query: (body) => ({ url: "/auth/verify-email", method: "POST", body }),
     }),
-    resendVerification: builder.mutation<{ success: true }, ResendVerificationPayload>({
+    resendVerification: builder.mutation<{ success: true; devOtp?: string }, ResendVerificationPayload>({
       query: (body) => ({ url: "/auth/resend-verification", method: "POST", body }),
     }),
-    forgotPassword: builder.mutation<{ success: true }, ForgotPasswordPayload>({
+    forgotPassword: builder.mutation<{ success: true; devOtp?: string }, ForgotPasswordPayload>({
       query: (body) => ({ url: "/auth/forgot-password", method: "POST", body }),
     }),
     resetPassword: builder.mutation<{ success: true }, ResetPasswordPayload>({
