@@ -13,9 +13,9 @@ import type { VideoLessonsPageProps } from "../../video-lessons.types";
 import { COURSE_ID, highlightText } from "../../video-lessons.utils";
 
 export function VideoLessonsPage(props: VideoLessonsPageProps = {}) {
-  const { onNavigateScreen } = props;
+  const { onNavigateScreen, courseId = COURSE_ID } = props;
 
-  const courseQuery = useGetCourseQuery(COURSE_ID);
+  const courseQuery = useGetCourseQuery(courseId);
   const course = courseQuery.data;
 
   const [currentLessonId, setCurrentLessonId] = useState<string | undefined>(undefined);

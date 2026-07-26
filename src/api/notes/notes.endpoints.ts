@@ -23,8 +23,11 @@ export const notesApi = prepaiApi.injectEndpoints({
     listFlashcards: builder.query<ListFlashcardsResponse, { subjectId?: string } | void>({
       query: (params) => `/flashcards${buildQueryString({ ...params })}`,
     }),
+    getNotePdf: builder.mutation<{ url: string }, string>({
+      query: (id) => ({ url: `/notes/${id}/pdf`, method: "GET" }),
+    }),
   }),
   overrideExisting: true,
 });
 
-export const { useListNotesQuery, useGetNoteQuery, useListFlashcardsQuery } = notesApi;
+export const { useListNotesQuery, useGetNoteQuery, useListFlashcardsQuery, useGetNotePdfMutation } = notesApi;

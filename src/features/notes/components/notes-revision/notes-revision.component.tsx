@@ -1,7 +1,12 @@
 import { useMemo, useState } from "react";
 import { Alert, Box, Button, Chip, CircularProgress, Divider, Paper, Typography } from "@mui/material";
 import type { AppScreen } from "../../../../app/screens";
-import { useGetNoteQuery, useListFlashcardsQuery, useListNotesQuery } from "../../../../api/notes/notes.endpoints";
+import {
+  useGetNotePdfMutation,
+  useGetNoteQuery,
+  useListFlashcardsQuery,
+  useListNotesQuery,
+} from "../../../../api/notes/notes.endpoints";
 import type { NoteBlock } from "../../../../api/notes/notes.types";
 import { isPlanRequiredError, toApiErrorMessage } from "../../../../api/error";
 import { PracticeTopbar } from "../../../practice";
@@ -52,6 +57,12 @@ export function NotesRevisionPage(props: NotesRevisionPageProps = {}) {
   const notesQuery = useListNotesQuery();
   const flashcardsQuery = useListFlashcardsQuery();
   const noteDetailQuery = useGetNoteQuery(activeNoteId ?? "", { skip: !activeNoteId });
+  const [getNotePdf, notePdfState] = useGetNotePdfMutation();
+
+  async function handleDownloadPdf(noteId: string): Promise<void> {
+    const { url } = await getNotePdf(noteId).unwrap();
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
 
   const notes = useMemo(() => notesQuery.data?.items ?? [], [notesQuery.data]);
   const flashcards = useMemo(() => flashcardsQuery.data?.items ?? [], [flashcardsQuery.data]);
@@ -427,6 +438,19 @@ export function NotesRevisionPage(props: NotesRevisionPageProps = {}) {
                   <Button variant="contained" onClick={() => onNavigateScreen?.("aiTutor")} sx={{ py: 1.35, borderRadius: "11px", fontSize: 13.5 }}>
                     Ask AI about this note
                   </Button>
+                  <Button
+                    variant="outlined"
+                    disabled={notePdfState.isLoading}
+                    onClick={() => void handleDownloadPdf(activeNote.id)}
+                    sx={{ py: 1.35, borderRadius: "11px", fontSize: 13.5 }}
+                  >
+                    {notePdfState.isLoading ? "Preparing PDF…" : "Download PDF"}
+                  </Button>
+                  {notePdfState.isError && (
+                    <Alert severity="error" sx={{ borderRadius: 2, fontSize: 12.5 }}>
+                      {toApiErrorMessage(notePdfState.error, "Could not generate the PDF.")}
+                    </Alert>
+                  )}
                 </Box>
               </Box>
             </Box>

@@ -13,6 +13,7 @@ import { MockExamRunnerRoute } from "./pages/MockExamRunnerRoute";
 import { MockExamsRoute } from "./pages/MockExamsRoute";
 import { OnboardingRoute } from "./pages/OnboardingRoute";
 import { SettingsProfileRoute } from "./pages/SettingsProfileRoute";
+import { VideoLessonsPlayerRoute } from "./pages/VideoLessonsPlayerRoute";
 import {
   AdminAgentLogsRoute,
   AdminContentManagerRoute,
@@ -54,6 +55,7 @@ export const router = createBrowserRouter([
           { path: "daily-challenge", element: <DailyChallengeRoute /> },
           { path: "leaderboard", element: <LeaderboardRoute /> },
           { path: "video-lessons", element: <VideoLessonsRoute /> },
+          { path: "video-lessons/:courseId", element: <VideoLessonsPlayerRoute /> },
           { path: "bookmarks", element: <BookmarksWeakAreasRoute /> },
           { path: "offline", element: <OfflineModeRoute /> },
           { path: "search", element: <GlobalSearchRoute /> },

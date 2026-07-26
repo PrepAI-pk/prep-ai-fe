@@ -1,5 +1,16 @@
 export type LessonPlaybackState = "LOCKED" | "NEXT" | "PLAYING" | "WATCHED";
 
+export type CourseSummary = {
+  id: string;
+  slug: string;
+  title: string;
+  lessonCount: number;
+  totalDurationSec: number;
+  subjects: string[];
+};
+
+export type CoursesResponse = { items: CourseSummary[] };
+
 export type CourseLessonSummary = {
   id: string;
   order: number;

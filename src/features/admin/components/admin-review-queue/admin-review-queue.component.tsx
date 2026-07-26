@@ -1,9 +1,25 @@
 import { useState } from "react";
-import { Alert, Box, Button, Chip, CircularProgress, Paper, Typography } from "@mui/material";
+import {
+  Alert,
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  MenuItem,
+  Select,
+  TextField,
+  Typography,
+  Paper,
+} from "@mui/material";
 import type { AppScreen } from "../../../../app/screens";
 import { toApiErrorMessage } from "../../../../api/error";
 import {
   useApproveAdminQuestionMutation,
+  useEditAdminQuestionMutation,
   useGetAdminReviewQueueQuery,
   useRejectAdminQuestionMutation,
 } from "../../../../api/admin/admin-review-queue.endpoints";
@@ -29,7 +45,10 @@ export function AdminReviewQueuePage(props: AdminReviewQueuePageProps) {
   const queueQuery = useGetAdminReviewQueueQuery();
   const [approve] = useApproveAdminQuestionMutation();
   const [reject] = useRejectAdminQuestionMutation();
+  const [editQuestion, editState] = useEditAdminQuestionMutation();
   const [actingId, setActingId] = useState<string | null>(null);
+  const [editingDraft, setEditingDraft] = useState<AdminReviewItem | null>(null);
+  const [editForm, setEditForm] = useState<EditForm | null>(null);
 
   const drafts = queueQuery.data?.items ?? [];
 
@@ -49,6 +68,35 @@ export function AdminReviewQueuePage(props: AdminReviewQueuePageProps) {
     } finally {
       setActingId(null);
     }
+  }
+
+  function handleOpenEdit(draft: AdminReviewItem): void {
+    setEditingDraft(draft);
+    setEditForm({
+      questionText: draft.questionText,
+      options: [...draft.options],
+      correctIndex: draft.correctIndex,
+      explanation: draft.explanation ?? "",
+    });
+  }
+
+  function handleCloseEdit(): void {
+    setEditingDraft(null);
+    setEditForm(null);
+  }
+
+  async function handleSaveEdit(): Promise<void> {
+    if (!editingDraft || !editForm) {
+      return;
+    }
+    await editQuestion({
+      id: editingDraft.id,
+      questionText: editForm.questionText,
+      options: editForm.options,
+      correctIndex: editForm.correctIndex,
+      explanation: editForm.explanation,
+    }).unwrap();
+    handleCloseEdit();
   }
 
   return (
@@ -154,7 +202,14 @@ export function AdminReviewQueuePage(props: AdminReviewQueuePageProps) {
                       >
                         Approve & publish
                       </Button>
-                      <Button variant="outlined" disabled sx={{ px: "18px", py: "9px", borderRadius: "10px", fontSize: 13, fontWeight: 600 }}>Edit</Button>
+                      <Button
+                        variant="outlined"
+                        disabled={busy}
+                        sx={{ px: "18px", py: "9px", borderRadius: "10px", fontSize: 13, fontWeight: 600 }}
+                        onClick={() => handleOpenEdit(draft)}
+                      >
+                        Edit
+                      </Button>
                       <Button
                         variant="outlined"
                         color="error"
@@ -171,9 +226,81 @@ export function AdminReviewQueuePage(props: AdminReviewQueuePageProps) {
             </Box>
           </Box>
         </Box>
+
+        <Dialog open={editingDraft !== null} onClose={handleCloseEdit} maxWidth="sm" fullWidth>
+          <DialogTitle>Edit draft MCQ</DialogTitle>
+          <DialogContent sx={{ display: "grid", gap: 2, pt: "8px !important" }}>
+            {editState.isError && (
+              <Alert severity="error" sx={{ borderRadius: 2 }}>
+                {toApiErrorMessage(editState.error, "Could not save this edit.")}
+              </Alert>
+            )}
+
+            <TextField
+              label="Question"
+              multiline
+              minRows={2}
+              fullWidth
+              value={editForm?.questionText ?? ""}
+              onChange={(e) => setEditForm((f) => (f ? { ...f, questionText: e.target.value } : f))}
+            />
+
+            {editForm?.options.map((option, index) => (
+              <TextField
+                key={index}
+                label={`Option ${String.fromCharCode(65 + index)}`}
+                fullWidth
+                value={option}
+                onChange={(e) =>
+                  setEditForm((f) => {
+                    if (!f) return f;
+                    const options = [...f.options];
+                    options[index] = e.target.value;
+                    return { ...f, options };
+                  })
+                }
+              />
+            ))}
+
+            <Select
+              value={editForm?.correctIndex ?? 0}
+              onChange={(e) => setEditForm((f) => (f ? { ...f, correctIndex: Number(e.target.value) } : f))}
+            >
+              {editForm?.options.map((_, index) => (
+                <MenuItem key={index} value={index}>
+                  Correct answer: {String.fromCharCode(65 + index)}
+                </MenuItem>
+              ))}
+            </Select>
+
+            <TextField
+              label="Explanation"
+              multiline
+              minRows={2}
+              fullWidth
+              value={editForm?.explanation ?? ""}
+              onChange={(e) => setEditForm((f) => (f ? { ...f, explanation: e.target.value } : f))}
+            />
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={handleCloseEdit} disabled={editState.isLoading}>
+              Cancel
+            </Button>
+            <Button variant="contained" onClick={() => void handleSaveEdit()} disabled={editState.isLoading}>
+              Save changes
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Box>
   );
 }
+
+type EditForm = {
+  questionText: string;
+  options: string[];
+  correctIndex: number;
+  explanation: string;
+};
 
 function capitalize(value: string): string {
   return value.charAt(0) + value.slice(1).toLowerCase();

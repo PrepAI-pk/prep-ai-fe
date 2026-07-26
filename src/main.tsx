@@ -1,3 +1,6 @@
+import "./instrument"; // Must be first — see instrument.ts
+
+import * as Sentry from "@sentry/react";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { Provider } from "react-redux";
@@ -8,10 +11,12 @@ import "./index.css";
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <Provider store={store}>
-      <DynamicThemeApp>
-        <App />
-      </DynamicThemeApp>
-    </Provider>
+    <Sentry.ErrorBoundary fallback={<p>Something went wrong. Please refresh the page.</p>}>
+      <Provider store={store}>
+        <DynamicThemeApp>
+          <App />
+        </DynamicThemeApp>
+      </Provider>
+    </Sentry.ErrorBoundary>
   </StrictMode>,
 )
