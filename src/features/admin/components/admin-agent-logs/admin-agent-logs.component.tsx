@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Alert, Box, Button, CircularProgress, Paper, Snackbar, Typography } from "@mui/material";
 import type { AppScreen } from "../../../../app/screens";
 import { toApiErrorMessage } from "../../../../api/error";
@@ -25,13 +25,15 @@ export function AdminAgentLogsPage(props: AdminAgentLogsPageProps) {
   const [savePrompt, { isLoading: isSaving, isSuccess: saved }] = useSaveAdminPromptMutation();
 
   const [prompt, setPrompt] = useState("");
-
-  useEffect(() => {
+  const [loadedPrompts, setLoadedPrompts] = useState(promptsQuery.data);
+  
+  if (promptsQuery.data !== loadedPrompts) {
+    setLoadedPrompts(promptsQuery.data);
     const active = promptsQuery.data?.find((p) => p.agent === PROMPT_AGENT);
     if (active?.content) {
       setPrompt(active.content);
     }
-  }, [promptsQuery.data]);
+  }
 
   return (
     <Box sx={adminSharedStyles.shell}>
