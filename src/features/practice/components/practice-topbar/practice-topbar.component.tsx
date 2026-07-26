@@ -100,10 +100,9 @@ export function PracticeTopbar(props: PracticeTopbarProps) {
     ? { theme: serverUiPrefs.theme === "DARK" ? ("dark" as const) : ("light" as const), accent: serverUiPrefs.accent.toLowerCase() as "indigo" | "emerald" | "plum" }
     : readUiPrefs();
 
-  const notifications = notificationsData?.items ?? [];
   const visibleNotifications = useMemo(
-    () => notifications.filter((item) => !notifPrefs || notifPrefs.categories[CATEGORY_TO_PREF_KEY[item.category]]),
-    [notifications, notifPrefs],
+    () => (notificationsData?.items ?? []).filter((item) => !notifPrefs || notifPrefs.categories[CATEGORY_TO_PREF_KEY[item.category]]),
+    [notificationsData, notifPrefs],
   );
   // The bell badge counts every unread notification server-side, regardless
   // of the category filters applied to the dropdown list below — matches

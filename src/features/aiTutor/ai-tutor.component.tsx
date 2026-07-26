@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import SendRounded from "@mui/icons-material/SendRounded";
 import { Alert, Box, Button, Paper, TextField, Typography } from "@mui/material";
 import type { AppScreen } from "../../app/screens";
@@ -77,14 +77,21 @@ export function AiTutorPage(props: AiTutorPageProps = {}) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
 
-  // Resume the most recently active conversation, if one exists.
-  useEffect(() => {
+  // Resume the most recently active conversation, if one exists. Adjusting
+  // state during render (instead of in an effect) avoids the cascading
+  // re-render that a synchronous setState-in-effect would cause — see
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes
+  const [loadedConversations, setLoadedConversations] = useState(conversationsQuery.data);
+  if (conversationsQuery.data !== loadedConversations) {
+    setLoadedConversations(conversationsQuery.data);
     if (!activeConversationId && conversationsQuery.data && conversationsQuery.data.length > 0) {
       setActiveConversationId(conversationsQuery.data[0].id);
     }
-  }, [activeConversationId, conversationsQuery.data]);
+  }
 
-  useEffect(() => {
+  const [loadedConversation, setLoadedConversation] = useState(conversationQuery.data);
+  if (conversationQuery.data !== loadedConversation) {
+    setLoadedConversation(conversationQuery.data);
     if (conversationQuery.data) {
       setMessages(
         conversationQuery.data.messages.map((m) => ({
@@ -95,7 +102,7 @@ export function AiTutorPage(props: AiTutorPageProps = {}) {
         })),
       );
     }
-  }, [conversationQuery.data]);
+  }
 
   async function sendMessage(text: string): Promise<void> {
     const clean = text.trim();
