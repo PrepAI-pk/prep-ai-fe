@@ -1,9 +1,14 @@
 import type { AuthUser } from "../../store/slices/auth-slice";
 
+export type Gender = "MALE" | "FEMALE" | "OTHER" | "PREFER_NOT_TO_SAY";
+
 export type RegisterPayload = {
   fullName: string;
   email: string;
   password: string;
+  phone: string;
+  city: string;
+  gender?: Gender;
 };
 
 export type LoginPayload = {
@@ -24,12 +29,22 @@ export type RefreshResponse = {
   accessToken: string;
 };
 
+export type VerifyEmailPayload = {
+  email: string;
+  code: string;
+};
+
+export type ResendVerificationPayload = {
+  email: string;
+};
+
 export type ForgotPasswordPayload = {
   email: string;
 };
 
 export type ResetPasswordPayload = {
-  token: string;
+  email: string;
+  code: string;
   newPassword: string;
 };
 

@@ -7,7 +7,9 @@ import type {
   LoginPayload,
   RefreshResponse,
   RegisterPayload,
+  ResendVerificationPayload,
   ResetPasswordPayload,
+  VerifyEmailPayload,
 } from "./auth.types";
 
 export const authApi = prepaiApi.injectEndpoints({
@@ -26,6 +28,12 @@ export const authApi = prepaiApi.injectEndpoints({
     }),
     logout: builder.mutation<{ success: true }, void>({
       query: () => ({ url: "/auth/logout", method: "POST" }),
+    }),
+    verifyEmail: builder.mutation<{ success: true }, VerifyEmailPayload>({
+      query: (body) => ({ url: "/auth/verify-email", method: "POST", body }),
+    }),
+    resendVerification: builder.mutation<{ success: true }, ResendVerificationPayload>({
+      query: (body) => ({ url: "/auth/resend-verification", method: "POST", body }),
     }),
     forgotPassword: builder.mutation<{ success: true }, ForgotPasswordPayload>({
       query: (body) => ({ url: "/auth/forgot-password", method: "POST", body }),
@@ -46,6 +54,8 @@ export const {
   useGoogleAuthMutation,
   useRefreshMutation,
   useLogoutMutation,
+  useVerifyEmailMutation,
+  useResendVerificationMutation,
   useForgotPasswordMutation,
   useResetPasswordMutation,
   useChangePasswordMutation,
