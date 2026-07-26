@@ -55,6 +55,7 @@ export function useBootstrapAuth(): void {
               avatarInitials: me.avatarInitials,
               role: me.role as BackendRole,
               onboardedAt: me.onboardedAt,
+              emailVerifiedAt: me.emailVerifiedAt,
             },
           }),
         );

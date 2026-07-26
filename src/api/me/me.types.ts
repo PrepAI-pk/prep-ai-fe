@@ -7,9 +7,12 @@ export type BackendDigestFreq = "DAILY" | "WEEKLY" | "OFF";
 export type MeResponse = {
   id: string;
   email: string;
+  emailVerifiedAt: string | null;
   fullName: string;
   avatarInitials: string | null;
   role: string;
+  phone: string | null;
+  gender: string | null;
   city: string | null;
   province: string | null;
   onboardedAt: string | null;

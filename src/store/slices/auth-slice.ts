@@ -10,6 +10,7 @@ export type AuthUser = {
   avatarInitials: string | null;
   role: BackendRole;
   onboardedAt: string | null;
+  emailVerifiedAt: string | null;
 };
 
 export type AuthStatus = "idle" | "loading" | "authenticated" | "unauthenticated";
