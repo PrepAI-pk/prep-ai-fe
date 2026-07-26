@@ -1,6 +1,7 @@
 import type { AuthUser } from "../../store/slices/auth-slice";
 
 export type Gender = "MALE" | "FEMALE" | "OTHER" | "PREFER_NOT_TO_SAY";
+export type OtpChannel = "EMAIL" | "SMS" | "BOTH";
 
 export type RegisterPayload = {
   fullName: string;
@@ -9,6 +10,7 @@ export type RegisterPayload = {
   phone: string;
   city: string;
   gender?: Gender;
+  otpChannel?: OtpChannel;
 };
 
 export type LoginPayload = {
@@ -23,6 +25,9 @@ export type GoogleAuthPayload = {
 export type AuthSuccessResponse = {
   accessToken: string;
   user: AuthUser;
+  // Only populated outside production, when no email/SMS provider is
+  // configured — lets the flow be completed without either.
+  devOtp?: string;
 };
 
 export type RefreshResponse = {
@@ -36,10 +41,12 @@ export type VerifyEmailPayload = {
 
 export type ResendVerificationPayload = {
   email: string;
+  channel?: OtpChannel;
 };
 
 export type ForgotPasswordPayload = {
   email: string;
+  channel?: OtpChannel;
 };
 
 export type ResetPasswordPayload = {
